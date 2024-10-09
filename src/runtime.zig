@@ -74,6 +74,7 @@ pub fn run(source: []const u8) Parser.Errors![]u8 {
     const AST = try Parser.init(source);
     const rt = evaluate(&AST);
 
+    // FIXME: memory leak below
     return switch (rt.type) {
         .Number => try std.fmt.allocPrint(allocator, "{d}", .{rt.value.Number}),
         .Null => try std.fmt.allocPrint(allocator, "null", .{}),
