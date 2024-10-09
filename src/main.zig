@@ -2,12 +2,12 @@ const std = @import("std");
 const Parser = @import("./parser.zig");
 const Node = @import("./ast.zig").Node;
 const Runtime = @import("./runtime.zig");
+const REPL = @import("./repl.zig").REPL;
 
 pub fn main() !void {
-    const value = try Runtime.run("5 * 3");
-
-    std.debug.print("{any}", .{switch (value.type) {
-        .Number => value.value.Number,
-        else => unreachable,
-    }});
+    try REPL();
+    // std.debug.print("{any}", .{switch (runtimeValue.type) {
+    //     .Number => runtimeValue.value.Number,
+    //     else => unreachable,
+    // }});
 }

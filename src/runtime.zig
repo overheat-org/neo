@@ -7,21 +7,21 @@ const TokenTag = _token.Tag;
 
 const allocator = std.heap.page_allocator;
 
-const Value = struct {
+const RuntimeValue = struct {
     type: TokenTag,
     value: union {
         Number: f64,
         Null: u0,
     },
 
-    pub fn mkNumber(number: f64) Value {
+    pub fn mkNumber(number: f64) RuntimeValue {
         return .{
             .type = TokenTag.Number,
             .value = .{ .Number = number },
         };
     }
 
-    pub fn mkNull() Value {
+    pub fn mkNull() RuntimeValue {
         return .{
             .type = TokenTag.Null,
             .value = .{ .Null = 0 },
@@ -29,11 +29,11 @@ const Value = struct {
     }
 };
 
-fn eval_binary_expr(left: Value, right: Value, operator: TokenTag) Value {
+fn eval_binary_expr(left: RuntimeValue, right: RuntimeValue, operator: TokenTag) RuntimeValue {
     const left_value = left.value.Number;
     const right_value = right.value.Number;
 
-    return Value.mkNumber(switch (operator) {
+    return RuntimeValue.mkNumber(switch (operator) {
         .Plus => left_value + right_value,
         .Minus => left_value - right_value,
         .Asterisk => left_value * right_value,
@@ -43,16 +43,16 @@ fn eval_binary_expr(left: Value, right: Value, operator: TokenTag) Value {
     });
 }
 
-fn evaluate(node: *const Node) Value {
+fn evaluate(node: *const Node) RuntimeValue {
     return switch (node.kind) {
         .Program => {
-            var last_evaluated: ?Value = null;
+            var last_evaluated: ?RuntimeValue = null;
 
             for (node.children) |statement| {
                 last_evaluated = evaluate(statement);
             }
 
-            return last_evaluated orelse Value.mkNull();
+            return last_evaluated orelse RuntimeValue.mkNull();
         },
         .BinaryExpression => {
             const node_props = node.props.?.BinaryExpression;
@@ -62,7 +62,7 @@ fn evaluate(node: *const Node) Value {
             return eval_binary_expr(left_node, right_node, node_props.operator);
         },
         .Number => {
-            return Value.mkNumber(node.props.?.Number.value);
+            return RuntimeValue.mkNumber(node.props.?.Number.value);
         },
         else => {
             @panic("?");
@@ -70,7 +70,13 @@ fn evaluate(node: *const Node) Value {
     };
 }
 
-pub fn run(source: []const u8) Parser.Errors!Value {
+pub fn run(source: []const u8) Parser.Errors![]u8 {
     const AST = try Parser.init(source);
-    return evaluate(&AST);
+    const rt = evaluate(&AST);
+
+    return switch (rt.type) {
+        .Number => try std.fmt.allocPrint(allocator, "{d}", .{rt.value.Number}),
+        .Null => try std.fmt.allocPrint(allocator, "null", .{}),
+        else => unreachable,
+    };
 }
