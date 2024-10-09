@@ -1,4 +1,5 @@
 pub const Tag = enum {
+    Null,
     Identifier,
     Keyword,
     Number,
@@ -6,11 +7,6 @@ pub const Tag = enum {
     Equal,
     DoubleEqual,
     NotEqual,
-    PlusEqual,
-    MinusEqual,
-    AsteriskEqual,
-    SlashEqual,
-    PercentEqual,
     GreaterThan,
     GreaterEqual,
     LessThan,
@@ -30,20 +26,6 @@ pub const Tag = enum {
     LeftBracket,
     RightBracket,
     EOF,
-
-    pub fn toString(tag: Tag) []const u8 {
-        return switch (tag) {
-            .Equal => "=",
-            .DoubleEqual => "==",
-            .NotEqual => "!=",
-            .PlusEqual => "+=",
-            .MinusEqual => "-=",
-            .AsteriskEqual => "*=",
-            .SlashEqual => "/=",
-            .PercentEqual => "%=",
-            else => "\x00",
-        };
-    }
 };
 
 pub const Value = union {

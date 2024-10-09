@@ -1,13 +1,13 @@
 const std = @import("std");
 const Parser = @import("./parser.zig");
-const Node = @import("ast.zig").Node;
+const Node = @import("./ast.zig").Node;
+const Runtime = @import("./runtime.zig");
 
 pub fn main() !void {
-    const AST = try Parser.init("5 + 5");
+    const value = try Runtime.run("5 * 3");
 
-    // var string = std.ArrayList(u8).init(std.heap.page_allocator);
-    // try std.json.stringify(AST, .{}, string.writer());
-
-    std.debug.print("{any}", .{AST});
-    // std.debug.print("{s}", .{string.items});
+    std.debug.print("{any}", .{switch (value.type) {
+        .Number => value.value.Number,
+        else => unreachable,
+    }});
 }
