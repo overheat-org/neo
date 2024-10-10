@@ -4,6 +4,7 @@ pub const Tag = enum {
     Keyword,
     Number,
     String,
+    Boolean,
     Equal,
     DoubleEqual,
     NotEqual,

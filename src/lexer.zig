@@ -80,6 +80,7 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
             '=' => {
                 if (src.peek() == '=') {
                     tokens.save(.DoubleEqual, null);
+                    _ = src.next();
                 } else {
                     tokens.save(.Equal, null);
                 }
@@ -174,10 +175,7 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
                     try makeNumber(&src)
             ),
             '1'...'9' => tokens.save(.Number, try makeNumber(&src)),
-            else => {
-                std.debug.print("UnknownCharacter \"{}\"\n", .{src.curr()});
-                return Errors.UnknownCharacter;
-            },
+            else => return Errors.UnknownCharacter,
             // zig fmt: on
         }
     }

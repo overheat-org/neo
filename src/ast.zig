@@ -12,6 +12,7 @@ pub const Node = struct {
         Identifier,
         Number,
         AssignmentExpression,
+        ComparationExpression,
         BinaryExpression,
     };
 
@@ -21,6 +22,7 @@ pub const Node = struct {
         Identifier: Identifier,
         Number: Number,
         AssignmentExpression: AssignmentExpression,
+        ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
     };
 };
@@ -38,6 +40,12 @@ pub const Number = struct {
 };
 
 pub const BinaryExpression = struct {
+    left: *Node,
+    right: *Node,
+    operator: TokenTag,
+};
+
+pub const ComparationExpression = struct {
     left: *Node,
     right: *Node,
     operator: TokenTag,

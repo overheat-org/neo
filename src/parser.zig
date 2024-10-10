@@ -84,25 +84,43 @@ fn parse_stmt(src: *Reader) Errors!*Node {
 }
 
 fn parse_expr(src: *Reader) Errors!*Node {
-    return try parse_assign_expr(src);
+    return try parse_comparation_expr(src);
 }
 
-fn parse_assign_expr(src: *Reader) Errors!*Node {
+fn parse_comparation_expr(src: *Reader) Errors!*Node {
     const left = try parse_additive_expr(src);
     const operator: Token.Tag = if (src.curr()) |c| c.tag else .EOF;
+
+    const node = try allocator.create(Node);
 
     return switch (operator) {
         .Equal => {
             _ = src.next();
 
-            const right = try parse_additive_expr(src);
-
-            const node = try allocator.create(Node);
+            const right = try parse_primary_expr(src);
 
             node.* = Node{
                 .kind = .AssignmentExpression,
                 .props = .{
                     .AssignmentExpression = .{
+                        .left = left,
+                        .operator = operator,
+                        .right = right,
+                    },
+                },
+            };
+
+            return node;
+        },
+        .DoubleEqual => {
+            _ = src.next();
+
+            const right = try parse_primary_expr(src);
+
+            node.* = Node{
+                .kind = .ComparationExpression,
+                .props = .{
+                    .ComparationExpression = .{
                         .left = left,
                         .operator = operator,
                         .right = right,
