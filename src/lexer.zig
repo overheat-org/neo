@@ -23,7 +23,7 @@ const Reader = struct {
         };
     }
 
-    fn curr(self: Reader) u8 {
+    inline fn curr(self: Reader) u8 {
         if (self.offset < self.content.len) {
             return self.content[self.offset];
         }
@@ -31,14 +31,14 @@ const Reader = struct {
         return '\x00';
     }
 
-    fn next(self: *Reader) u8 {
+    inline fn next(self: *Reader) u8 {
         self.offset += 1;
         self.column_pos += 1;
 
         return self.curr();
     }
 
-    fn peek(self: Reader) u8 {
+    inline fn peek(self: Reader) u8 {
         if (self.offset + 1 < self.content.len) {
             return self.content[self.offset + 1];
         }
@@ -46,7 +46,7 @@ const Reader = struct {
         return '\x00';
     }
 
-    fn breakLine(self: *Reader) void {
+    inline fn breakLine(self: *Reader) void {
         self.offset += 1;
         self.line_pos += 1;
     }
@@ -141,6 +141,10 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
                 tokens.save(.Percent, null);
                 _ = src.next();
             },
+            '@' => {
+                tokens.save(.Decorator, null);
+                _ = src.next();
+            },
             '(' => {
                 tokens.save(.LeftParen, null);
                 _ = src.next();
@@ -165,7 +169,16 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
                 tokens.save(.RightBracket, null);
                 _ = src.next();
             },
-            'a'...'z', 'A'...'Z' => tokens.save(.Identifier, makeIdentifier(&src)),
+            'a'...'z', 'A'...'Z' => {
+                const text = makeText(&src).string;
+
+                if(Token.keywords.has(text)) {
+                    tokens.save(Token.keywords.get(text).?, null);
+                }
+                else {
+                    tokens.save(.Identifier, .{ .string = text });
+                }
+            },
             '0' => tokens.save(.Number,
                 // if (source.peek() == 'x')
                 //     makeHexa(&source)
@@ -185,7 +198,7 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
     return tokens.value;
 }
 
-fn makeIdentifier(source: *Reader) Token.Value {
+fn makeText(source: *Reader) Token.Value {
     const start_offset = source.offset;
 
     while (isLetter(source.peek()) or isNumber(source.peek()) or source.peek() == '_') {

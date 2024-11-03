@@ -1,10 +1,26 @@
+const std = @import("std");
 const _token = @import("./token.zig");
+const parser = @import("./parser.zig");
 const TokenTag = _token.Tag;
+
+/// List of Node pointers that needs to be deallocated
+pub var node_ptrs_list: std.ArrayList(*Node) = undefined;
+const allocator = std.heap.page_allocator;
+const Allocator = std.mem.Allocator;
 
 pub const Node = struct {
     kind: Kind,
-    props: ?Properties,
+    props: ?Properties = null,
     children: []*const Node = &.{},
+
+    pub inline fn init(node: Node) Allocator.Error!*Node {
+        const current = try allocator.create(Node);
+
+        current.* = node;
+        try node_ptrs_list.append(current);
+
+        return current;
+    }
 
     pub const Kind = enum {
         Program,
@@ -13,6 +29,9 @@ pub const Node = struct {
         String,
         Number,
         Boolean,
+        ObjectExpression,
+        ObjectProperty,
+        Null,
         AssignmentExpression,
         ComparationExpression,
         BinaryExpression,
@@ -25,6 +44,9 @@ pub const Node = struct {
         String: String,
         Number: Number,
         Boolean: Boolean,
+        ObjectExpression: ObjectExpression,
+        ObjectProperty: ObjectProperty,
+        Null: void,
         AssignmentExpression: AssignmentExpression,
         ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
@@ -36,7 +58,13 @@ pub const Identifier = struct {
 };
 
 pub const VarDeclaration = struct {
-    id: []const u8,
+    id: *Node,
+    value: *Node,
+    constant: bool,
+};
+
+pub const String = struct {
+    value: []u8,
 };
 
 pub const String = struct {
@@ -49,6 +77,15 @@ pub const Number = struct {
 
 pub const Boolean = struct {
     value: u1,
+};
+
+pub const ObjectExpression = struct {
+    properties: std.AutoHashMap(*Node, *Node),
+};
+
+pub const ObjectProperty = struct {
+    key: *Node,
+    value: *Node,
 };
 
 pub const BinaryExpression = struct {
