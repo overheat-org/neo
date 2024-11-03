@@ -11,6 +11,9 @@ pub const Node = struct {
         VarDeclaration,
         Identifier,
         Number,
+        Object,
+        ObjectProperty,
+        Null,
         AssignmentExpression,
         ComparationExpression,
         BinaryExpression,
@@ -21,6 +24,9 @@ pub const Node = struct {
         VarDeclaration: VarDeclaration,
         Identifier: Identifier,
         Number: Number,
+        Object: Object,
+        ObjectProperty: ObjectProperty,
+        Null: void,
         AssignmentExpression: AssignmentExpression,
         ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
@@ -32,11 +38,22 @@ pub const Identifier = struct {
 };
 
 pub const VarDeclaration = struct {
-    id: []const u8,
+    id: *Node,
+    value: *Node,
+    constant: bool,
 };
 
 pub const Number = struct {
     value: f64,
+};
+
+pub const Object = struct {
+    properties: []*Node,
+};
+
+pub const ObjectProperty = struct {
+    key: *Node,
+    value: *Node,
 };
 
 pub const BinaryExpression = struct {
