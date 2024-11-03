@@ -18,18 +18,11 @@ const Reader = struct {
     offset: usize,
     tokens: *std.ArrayList(Token),
 
-    fn init(tokens: *std.ArrayList(Token)) std.mem.Allocator.Error!*Reader {
-        const reader = try allocator.create(Reader);
-        reader.* = Reader{
+    fn init(tokens: *std.ArrayList(Token)) Reader {
+        return Reader{
             .offset = 0,
             .tokens = tokens,
         };
-
-        return reader;
-    }
-
-    fn deinit(self: *Reader) void {
-        allocator.free(self);
     }
 
     inline fn curr(self: *Reader) ?Token {
@@ -58,11 +51,13 @@ const Reader = struct {
         return self.tokens.items[self.offset];
     }
 
-    inline fn expect(self: *Reader, comptime tags: *[]Token.Tag, comptime string: []const u8) !void {
+    inline fn expect(self: *Reader, comptime tags: []const Token.Tag, comptime string: []const u8) !void {
         const token = self.curr().?;
-        if (std.mem.indexOf(Token.Tag, tags, token.tag) == null) {
-            @panic(string);
+        for (tags) |tag| {
+            if (tag == token.tag) return;
         }
+
+        @panic(string);
     }
 
     inline fn not_eof(self: *Reader) bool {
@@ -70,38 +65,37 @@ const Reader = struct {
     }
 };
 
-result: Node = undefined,
+pub fn init() Self {
+    Ast.node_ptrs_list = std.ArrayList(*Node).init(allocator);
 
-pub fn init(source: []const u8) Errors!Self {
-    Ast.node_ptrs_list = std.ArrayList(*const Node).init(allocator);
+    return Self{};
+}
 
+pub fn parse(_: Self, source: []const u8) !Node {
     var tokens = try Lexer.init(source);
     defer tokens.deinit();
 
-    const src = try Reader.init(&tokens);
-    defer src.deinit();
+    var src = Reader.init(&tokens);
 
-    var program_children = std.ArrayList(*const Node).init(allocator);
+    var program_children = std.ArrayList(*Node).init(allocator);
     defer program_children.deinit();
 
     while (src.not_eof()) {
-        const stmt = try parse_stmt(src);
+        const stmt = try parse_stmt(&src);
 
         try program_children.append(stmt);
     }
 
-    return Self{
-        .result = Node{
-            .kind = .Program,
-            .children = try program_children.toOwnedSlice(),
-            .props = null,
-        },
+    return Node{
+        .kind = .Program,
+        .children = try program_children.toOwnedSlice(),
+        .props = null,
     };
 }
 
-pub fn deinit() void {
+pub fn deinit(_: Self) void {
     for (Ast.node_ptrs_list.items) |item| {
-        allocator.free(item);
+        allocator.destroy(item);
     }
 
     Ast.node_ptrs_list.deinit();
@@ -120,14 +114,15 @@ fn parse_var_decl(src: *Reader) Errors!*Node {
     const is_const = keyword.tag == .Const;
 
     const identifierNode = try parse_primary_expr(src);
-    const token = try src.expect(&[_]Token.Tag{ .Equal, .SemiColon }, "Expecting semi-colon or equal");
+    try src.expect(&.{ .Equal, .SemiColon }, "Expecting semi-colon or equal");
+    const token = src.curr().?;
 
-    return Node.init(.{
+    return try Node.init(.{
         .kind = .VarDeclaration,
         .props = .{
             .VarDeclaration = .{
                 .id = identifierNode,
-                .value = if (token.tag == .Equal) try parse_expr(src) else &Node{ .kind = .Null },
+                .value = if (token.tag == .Equal) try parse_expr(src) else try Node.init(.{ .kind = .Null }),
                 .constant = is_const,
             },
         },
@@ -143,17 +138,24 @@ fn parse_object_expr(src: *Reader) Errors!*Node {
 
     _ = src.next();
 
-    const props = std.AutoHashMap(Node, Node).init(allocator);
+    var props = std.AutoHashMap(*Node, *Node).init(allocator);
 
     while (src.not_eof() and src.curr().?.tag != .RightBrace) {
-        try src.expect(.{.Identifier}, "Object literal key expected");
+        try src.expect(&.{.Identifier}, "Object literal key expected");
         const key = try parse_primary_expr(src);
 
-        try src.expect(.{.Equal}, "Missing colon following Identifier in Object Expression");
+        try src.expect(&.{.Equal}, "Missing colon following Identifier in Object Expression");
         const value = try parse_expr(src);
 
         try props.put(key, value);
     }
+
+    return Node.init(.{
+        .kind = .ObjectExpression,
+        .props = .{
+            .ObjectExpression = .{ .properties = props },
+        },
+    });
 }
 
 fn parse_comparation_expr(src: *Reader) Errors!*Node {
@@ -207,7 +209,7 @@ fn parse_additive_expr(src: *Reader) Errors!*Node {
 
         const right = try parse_multiplicitave_expr(src);
 
-        left = Node.init(.{
+        left = try Node.init(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -237,7 +239,7 @@ fn parse_multiplicitave_expr(src: *Reader) Errors!*Node {
 
         const right = try parse_primary_expr(src);
 
-        left = Node.init(.{
+        left = try Node.init(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -261,7 +263,7 @@ fn parse_primary_expr(src: *Reader) Errors!*Node {
         .Identifier => {
             _ = src.next();
 
-            return Node.init(.{
+            return try Node.init(.{
                 .kind = .Identifier,
                 .props = .{
                     .Identifier = .{
@@ -273,7 +275,7 @@ fn parse_primary_expr(src: *Reader) Errors!*Node {
         .Number => {
             _ = src.next();
 
-            return Node.init(.{
+            return try Node.init(.{
                 .kind = .Number,
                 .props = .{
                     .Number = .{
@@ -287,7 +289,7 @@ fn parse_primary_expr(src: *Reader) Errors!*Node {
 
             const value = try parse_expr(src);
 
-            _ = try src.expect(.{.RightParen}, "Expecting \")\"");
+            _ = try src.expect(&.{.RightParen}, "Expecting \")\"");
             _ = src.next();
 
             return value;

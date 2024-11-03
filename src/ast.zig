@@ -4,19 +4,20 @@ const parser = @import("./parser.zig");
 const TokenTag = _token.Tag;
 
 /// List of Node pointers that needs to be deallocated
-pub var node_ptrs_list: std.ArrayList(*const Node) = undefined;
+pub var node_ptrs_list: std.ArrayList(*Node) = undefined;
 const allocator = std.heap.page_allocator;
+const Allocator = std.mem.Allocator;
 
 pub const Node = struct {
     kind: Kind,
-    props: ?Properties,
+    props: ?Properties = null,
     children: []*const Node = &.{},
 
-    pub inline fn init(node: Node) Node {
+    pub inline fn init(node: Node) Allocator.Error!*Node {
         const current = try allocator.create(Node);
 
         current.* = node;
-        node_ptrs_list.append(current) catch @panic("Cannot register token to be deallocated");
+        try node_ptrs_list.append(current);
 
         return current;
     }
@@ -26,7 +27,7 @@ pub const Node = struct {
         VarDeclaration,
         Identifier,
         Number,
-        Object,
+        ObjectExpression,
         ObjectProperty,
         Null,
         AssignmentExpression,
@@ -39,7 +40,7 @@ pub const Node = struct {
         VarDeclaration: VarDeclaration,
         Identifier: Identifier,
         Number: Number,
-        Object: Object,
+        ObjectExpression: ObjectExpression,
         ObjectProperty: ObjectProperty,
         Null: void,
         AssignmentExpression: AssignmentExpression,
@@ -62,8 +63,8 @@ pub const Number = struct {
     value: f64,
 };
 
-pub const Object = struct {
-    properties: []*Node,
+pub const ObjectExpression = struct {
+    properties: std.AutoHashMap(*Node, *Node),
 };
 
 pub const ObjectProperty = struct {
