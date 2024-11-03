@@ -1,11 +1,21 @@
+const std = @import("std");
+
+const allocator = std.heap.page_allocator;
+
 pub const Tag = enum {
     Null,
     Identifier,
-    Keyword,
     Number,
     String,
     Boolean,
     Equal,
+    Var,
+    Const,
+    If,
+    Else,
+    Fn,
+    While,
+    For,
     DoubleEqual,
     NotEqual,
     GreaterThan,
@@ -14,12 +24,14 @@ pub const Tag = enum {
     LessEqual,
     Exclamation,
     Dot,
+    SemiColon,
     Colon,
     Plus,
     Minus,
     Asterisk,
     Slash,
     Percent,
+    Decorator,
     LeftParen,
     RightParen,
     LeftBrace,
@@ -38,3 +50,8 @@ const Self = @This();
 
 tag: Tag,
 value: ?Value,
+
+pub const keywords = std.ComptimeStringMap(Tag, .{
+    .{ "var", Tag.Var },
+    .{ "const", Tag.Const },
+});

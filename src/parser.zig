@@ -17,14 +17,21 @@ const Reader = struct {
     offset: usize,
     tokens: *std.ArrayList(Token),
 
-    fn init(tokens: *std.ArrayList(Token)) Lexer.Errors!Reader {
-        return Reader{
+    fn init(tokens: *std.ArrayList(Token)) std.mem.Allocator.Error!*Reader {
+        const reader = try allocator.create(Reader);
+        reader.* = Reader{
             .offset = 0,
             .tokens = tokens,
         };
+
+        return reader;
     }
 
-    fn curr(self: Reader) ?Token {
+    fn deinit(self: *Reader) void {
+        allocator.free(self);
+    }
+
+    inline fn curr(self: *Reader) ?Token {
         if (self.offset >= self.tokens.items.len) {
             return null;
         }
@@ -32,7 +39,7 @@ const Reader = struct {
         return self.tokens.items[self.offset];
     }
 
-    fn peek(self: Reader) ?Token {
+    inline fn peek(self: *Reader) ?Token {
         if (self.offset + 1 >= self.tokens.items.len) {
             return null;
         }
@@ -40,7 +47,7 @@ const Reader = struct {
         return self.tokens.items[self.offset + 1];
     }
 
-    fn next(self: *Reader) Token {
+    inline fn next(self: *Reader) Token {
         if (self.offset + 1 >= self.tokens.items.len) {
             return self.tokens.items[self.offset]; // Returing EOF
         }
@@ -49,42 +56,110 @@ const Reader = struct {
 
         return self.tokens.items[self.offset];
     }
+
+    inline fn expect(self: *Reader, comptime tags: []Token.Tag, comptime string: []const u8) !void {
+        const token = self.curr().?;
+        if (std.mem.indexOf(Token.Tag, tags, token.tag) == null) {
+            @panic(string);
+        }
+    }
+
+    inline fn not_eof(self: *Reader) bool {
+        return if (self.curr()) |c| c.tag != TokenTag.EOF else false;
+    }
 };
 
 pub fn init(source: []const u8) Errors!Node {
     var tokens = try Lexer.init(source);
     defer tokens.deinit();
 
-    var src = try Reader.init(&tokens);
+    const src = try Reader.init(&tokens);
+    defer src.deinit();
 
     var program_children = std.ArrayList(*const Node).init(allocator);
     defer program_children.deinit();
 
-    while (if (src.curr()) |c| c.tag != TokenTag.EOF else false) {
-        const stmt = try parse_stmt(&src);
+    while (src.not_eof()) {
+        const stmt = try parse_stmt(src);
 
         try program_children.append(stmt);
     }
 
-    const node = Node{
+    return Node{
         .kind = .Program,
         .children = try program_children.toOwnedSlice(),
         .props = null,
     };
-
-    return node;
 }
 
 fn parse_stmt(src: *Reader) Errors!*Node {
     return switch (src.curr().?.tag) {
-        // .Var, .Const => {},
+        .Var, .Const => parse_var_decl(src),
 
         else => try parse_expr(src),
     };
 }
 
+fn parse_var_decl(src: *Reader) Errors!*Node {
+    const keyword = src.next();
+    const is_const = keyword.tag == .Const;
+
+    const node = try allocator.create(Node);
+
+    const identifierNode = try parse_primary_expr(src);
+    const token = try src.expect(&[_]Token.Tag{ .Equal, .SemiColon }, "Expecting SemiColon or Equal");
+
+    if (token.tag != .Equal) {
+        if (is_const) unreachable;
+
+        node.* = Node{
+            .kind = .VarDeclaration,
+            .props = .{
+                .VarDeclaration = .{
+                    .id = identifierNode,
+                    .value = &Node{ .kind = .Null },
+                    .constant = is_const,
+                },
+            },
+        };
+    } else {
+        const valueNode = try parse_expr(src);
+
+        node.* = Node{
+            .kind = .VarDeclaration,
+            .props = .{
+                .VarDeclaration = .{
+                    .id = identifierNode,
+                    .value = valueNode,
+                    .constant = is_const,
+                },
+            },
+        };
+    }
+
+    return node;
+}
+
 fn parse_expr(src: *Reader) Errors!*Node {
-    return try parse_comparation_expr(src);
+    return try parse_object_expr(src);
+}
+
+fn parse_object_expr(src: *Reader) Errors!*Node {
+    if (src.curr().?.tag != .LeftBrace) return parse_comparation_expr(src);
+
+    _ = src.next();
+
+    const props = std.AutoHashMap(Node, Node).init(allocator);
+
+    while (src.not_eof() and src.curr().?.tag != .RightBrace) {
+        try src.expect(.{.Identifier}, "Object literal key expected");
+        const key = try parse_primary_expr(src);
+
+        try src.expect(.{.Equal}, "Missing colon following Identifier in Object Expression");
+        const value = try parse_expr(src);
+
+        try props.put(key, value);
+    }
 }
 
 fn parse_comparation_expr(src: *Reader) Errors!*Node {
@@ -236,14 +311,11 @@ fn parse_primary_expr(src: *Reader) Errors!*Node {
 
             const value = try parse_expr(src);
 
-            if (src.curr().?.tag != .RightParen) {
-                @panic("Error");
-            }
-
+            _ = try src.expect(.{.RightParen}, "Expecting \")\"");
             _ = src.next();
 
             return value;
         },
-        else => @panic("Unknown Token"),
+        else => Errors.UnknownToken,
     };
 }
