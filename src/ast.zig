@@ -10,7 +10,9 @@ pub const Node = struct {
         Program,
         VarDeclaration,
         Identifier,
+        String,
         Number,
+        Boolean,
         AssignmentExpression,
         ComparationExpression,
         BinaryExpression,
@@ -20,7 +22,9 @@ pub const Node = struct {
         Program: void,
         VarDeclaration: VarDeclaration,
         Identifier: Identifier,
+        String: String,
         Number: Number,
+        Boolean: Boolean,
         AssignmentExpression: AssignmentExpression,
         ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
@@ -35,8 +39,16 @@ pub const VarDeclaration = struct {
     id: []const u8,
 };
 
+pub const String = struct {
+    value: []u8,
+};
+
 pub const Number = struct {
     value: f64,
+};
+
+pub const Boolean = struct {
+    value: u1,
 };
 
 pub const BinaryExpression = struct {

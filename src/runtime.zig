@@ -7,9 +7,19 @@ const TokenTag = _token.Tag;
 
 const allocator = std.heap.page_allocator;
 
+const Errors = error{
+    InvalidComparationType,
+    UnknownNode,
+};
+
 const RuntimeValue = struct {
     type: TokenTag,
-    value: union { Number: f64, Null: u0, Boolean: u1 },
+    value: union {
+        Number: f64,
+        Null: u0,
+        Boolean: u1,
+        String: []u8,
+    },
 
     pub fn mkBool(boolean: bool) RuntimeValue {
         return .{
@@ -31,24 +41,31 @@ const RuntimeValue = struct {
             .value = .{ .Null = 0 },
         };
     }
+
+    pub fn mkString(string: []u8) RuntimeValue {
+        return .{
+            .type = TokenTag.String,
+            .value = .{ .String = string },
+        };
+    }
 };
 
 // zig fmt: off
-fn evaluate(node: *const Node) RuntimeValue {
+fn evaluate(node: *const Node) Errors!RuntimeValue {
     return switch (node.kind) {
         .Program => {
             var last_evaluated: ?RuntimeValue = null;
 
             for (node.children) |statement| {
-                last_evaluated = evaluate(statement);
+                last_evaluated = try evaluate(statement);
             }
 
             return last_evaluated orelse RuntimeValue.mkNull();
         },
         .BinaryExpression => {
             const node_props = node.props.?.BinaryExpression;
-            const left_value = evaluate(node_props.left).value.Number;
-            const right_value = evaluate(node_props.right).value.Number;
+            const left_value = try evaluate(node_props.left).value.Number;
+            const right_value = try evaluate(node_props.right).value.Number;
 
             return RuntimeValue.mkNumber(switch (node_props.operator) {
                 .Plus => left_value + right_value,
@@ -61,28 +78,49 @@ fn evaluate(node: *const Node) RuntimeValue {
         },
         .ComparationExpression => {
             const node_props = node.props.?.ComparationExpression;
-            const left_node = evaluate(node_props.left);
-            const right_node = evaluate(node_props.right);
+            const left_node = try evaluate(node_props.left);
+            const right_node = try evaluate(node_props.right);
 
-            const comparation_type: TokenTag = (
+            const comparation_type: Errors!TokenTag = (
                 if (left_node.type == .Number and right_node.type == .Number) TokenTag.Number
-                else @panic("vish")
+                else if (left_node.type == .String and right_node.type == .String) TokenTag.String
+                else TokenTag.Null
             );
 
             return RuntimeValue.mkBool(switch (node_props.operator) {
                 .DoubleEqual => switch (comparation_type) {
                     .Number => left_node.value.Number == right_node.value.Number,
-                    else => @panic("")
+                    .String => std.mem.eql([]u8, left_node.value.String, right_node.value.String),
+                    else => Errors.InvalidComparationType
+                },
+                .NotEqual => switch (comparation_type) {
+                    .Number => left_node.value.Number != right_node.value.Number,
+                    .String => !std.mem.eql([]u8, left_node.value.String, right_node.value.String),
+                    else => Errors.InvalidComparationType
+                },
+                .GreaterEqual => switch (comparation_type) {
+                    .Number => left_node.value.Number >= right_node.value.Number,
+                    else => Errors.InvalidComparationType
+                },
+                .GreaterThan => switch (comparation_type) {
+                    .Number => left_node.value.Number > right_node.value.Number,
+                    else => Errors.InvalidComparationType
+                },
+                .LessEqual => switch (comparation_type) {
+                    .Number => left_node.value.Number <= right_node.value.Number,
+                    else => Errors.InvalidComparationType
+                },
+                .LessThan => switch (comparation_type) {
+                    .Number => left_node.value.Number < right_node.value.Number,
+                    else => Errors.InvalidComparationType
                 },
                 else => unreachable
             });
         },
-        .Number => {
-            return RuntimeValue.mkNumber(node.props.?.Number.value);
-        },
-        else => {
-            @panic("?");
-        },
+        .Number => RuntimeValue.mkNumber(node.props.?.Number.value),
+        .Boolean => RuntimeValue.mkBool(node.props.?.Boolean.value),
+        .String => RuntimeValue.mkString(node.props.?.String.value),
+        else => Errors.UnknownNode,
     };
 }
 // zig fmt: on
