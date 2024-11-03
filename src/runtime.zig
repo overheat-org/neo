@@ -7,8 +7,9 @@ const TokenTag = _token.Tag;
 const Env = @import("./env.zig");
 
 const Errors = Parser.Errors || error{
-    InvalidComparationType,
     UnknownNode,
+    UndefinedVariable,
+    InvalidOperandType,
 };
 
 const Allocator = std.mem.Allocator;
@@ -75,9 +76,17 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
         },
         .BinaryExpression => {
             const node_props = node.props.?.BinaryExpression;
-            const left_value = (try evaluate(self, node_props.left, env)).value.Number;
-            const right_value = (try evaluate(self, node_props.right, env)).value.Number;
-
+            
+            const left = try evaluate(self, node_props.left, env);
+            const right = try evaluate(self, node_props.right, env);
+            
+            if (left.type != .Number or right.type != .Number) {
+                return Errors.InvalidOperandType;
+            }
+            
+            const left_value = left.value.Number;
+            const right_value = right.value.Number;
+            
             return RuntimeValue.mkNumber(switch (node_props.operator) {
                 .Plus => left_value + right_value,
                 .Minus => left_value - right_value,
@@ -102,28 +111,28 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
                 .DoubleEqual => switch (comparation_type) {
                     .Number => left_node.value.Number == right_node.value.Number,
                     .String => std.mem.eql(u8, left_node.value.String, right_node.value.String),
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 .NotEqual => switch (comparation_type) {
                     .Number => left_node.value.Number != right_node.value.Number,
                     .String => !std.mem.eql(u8, left_node.value.String, right_node.value.String),
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 .GreaterEqual => switch (comparation_type) {
                     .Number => left_node.value.Number >= right_node.value.Number,
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 .GreaterThan => switch (comparation_type) {
                     .Number => left_node.value.Number > right_node.value.Number,
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 .LessEqual => switch (comparation_type) {
                     .Number => left_node.value.Number <= right_node.value.Number,
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 .LessThan => switch (comparation_type) {
                     .Number => left_node.value.Number < right_node.value.Number,
-                    else => Errors.InvalidComparationType
+                    else => Errors.InvalidOperandType
                 },
                 else => unreachable
             });
@@ -140,7 +149,11 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
         .Identifier => {
             const node_props = node.props.?.Identifier;
 
-            return env.get(node_props.name).?;
+            if (env.get(node_props.name)) |value| {
+                return value;
+            }
+
+            return Errors.UndefinedVariable;
         },
         .Number => {
             return RuntimeValue.mkNumber(node.props.?.Number.value);
