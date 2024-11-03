@@ -10,6 +10,7 @@ pub fn REPL() !void {
     const stdout = std.io.getStdOut().writer();
 
     var env = Env.init(allocator);
+    defer env.deinit();
 
     while (true) {
         _ = try stdout.write("> ");
@@ -30,6 +31,7 @@ pub fn REPL() !void {
             .Boolean => try std.fmt.allocPrint(allocator, "{s}", .{if (rt.value.Boolean == 1) "true" else "false"}),
             else => unreachable,
         };
+        defer allocator.free(result);
 
         _ = try stdout.write(result);
         _ = try stdout.write("\n");
