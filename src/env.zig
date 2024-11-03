@@ -15,17 +15,26 @@ pub fn init(allocator: Allocator) Self {
     };
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
+    var it = self.variables.iterator();
+    while (it.next()) |entry| {
+        self.allocator.free(entry.key_ptr.*);
+    }
     self.variables.deinit();
 }
 
 pub fn set(self: *Self, name: []const u8, value: RuntimeValue) Allocator.Error!void {
-    std.debug.print("SET: {s}\n", .{name});
-    try self.variables.put(name, value);
+    const dupe_name = try self.allocator.dupe(u8, name);
+    errdefer self.allocator.free(dupe_name);
+
+    if (self.variables.getKey(name)) |old_key| {
+        self.allocator.free(old_key);
+    }
+
+    try self.variables.put(dupe_name, value);
 }
 
 pub fn get(self: *Self, name: []const u8) ?RuntimeValue {
     const a = self.variables.get(name);
-    std.debug.print("GET: {any}\n", .{a.?});
     return a;
 }
