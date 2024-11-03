@@ -112,7 +112,7 @@ fn parse_comparation_expr(src: *Reader) Errors!*Node {
 
             return node;
         },
-        .DoubleEqual => {
+        .LessEqual, .LessThan, .GreaterThan, .GreaterEqual, .NotEqual, .DoubleEqual => {
             _ = src.next();
 
             const right = try parse_primary_expr(src);
