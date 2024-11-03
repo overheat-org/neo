@@ -46,7 +46,7 @@ const Reader = struct {
         return '\x00';
     }
 
-    inline fn breakLine(self: *Reader) void {
+    inline fn break_line(self: *Reader) void {
         self.offset += 1;
         self.line_pos += 1;
     }
@@ -76,7 +76,7 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
         switch (curr) {
             // zig fmt: off
             ' ', '\t', '\r' => _ = src.next(),
-            '\n' => src.breakLine(),
+            '\n' => src.break_line(),
             '=' => {
                 if (src.peek() == '=') {
                     tokens.save(.DoubleEqual, null);
