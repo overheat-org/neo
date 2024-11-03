@@ -88,8 +88,10 @@ fn evaluate(node: *const Node) RuntimeValue {
 // zig fmt: on
 
 pub fn run(source: []const u8) Parser.Errors![]u8 {
-    const AST = try Parser.init(source);
-    const rt = evaluate(&AST);
+    const parser = try Parser.init(source);
+    defer parser.deinit();
+
+    const rt = evaluate(&parser.result);
 
     // FIXME: memory leak below
     return switch (rt.type) {

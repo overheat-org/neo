@@ -2,13 +2,14 @@ const std = @import("std");
 const Lexer = @import("./lexer.zig");
 const Token = @import("./token.zig");
 const TokenTag = Token.Tag;
-
 const _ast = @import("./ast.zig");
 const Node = _ast.Node;
 const AssignmentExpression = _ast.AssignmentExpression;
 const BinaryExpression = _ast.BinaryExpression;
+const Ast = @import("./ast.zig");
 
 const allocator = std.heap.page_allocator;
+
 const Self = @This();
 
 pub const Errors = Lexer.Errors || std.mem.Allocator.Error || error{UnknownToken};
@@ -57,7 +58,7 @@ const Reader = struct {
         return self.tokens.items[self.offset];
     }
 
-    inline fn expect(self: *Reader, comptime tags: []Token.Tag, comptime string: []const u8) !void {
+    inline fn expect(self: *Reader, comptime tags: *[]Token.Tag, comptime string: []const u8) !void {
         const token = self.curr().?;
         if (std.mem.indexOf(Token.Tag, tags, token.tag) == null) {
             @panic(string);
@@ -69,7 +70,11 @@ const Reader = struct {
     }
 };
 
-pub fn init(source: []const u8) Errors!Node {
+result: Node = undefined,
+
+pub fn init(source: []const u8) Errors!Self {
+    Ast.node_ptrs_list = std.ArrayList(*const Node).init(allocator);
+
     var tokens = try Lexer.init(source);
     defer tokens.deinit();
 
@@ -85,11 +90,21 @@ pub fn init(source: []const u8) Errors!Node {
         try program_children.append(stmt);
     }
 
-    return Node{
-        .kind = .Program,
-        .children = try program_children.toOwnedSlice(),
-        .props = null,
+    return Self{
+        .result = Node{
+            .kind = .Program,
+            .children = try program_children.toOwnedSlice(),
+            .props = null,
+        },
     };
+}
+
+pub fn deinit() void {
+    for (Ast.node_ptrs_list.items) |item| {
+        allocator.free(item);
+    }
+
+    Ast.node_ptrs_list.deinit();
 }
 
 fn parse_stmt(src: *Reader) Errors!*Node {
@@ -104,40 +119,19 @@ fn parse_var_decl(src: *Reader) Errors!*Node {
     const keyword = src.next();
     const is_const = keyword.tag == .Const;
 
-    const node = try allocator.create(Node);
-
     const identifierNode = try parse_primary_expr(src);
-    const token = try src.expect(&[_]Token.Tag{ .Equal, .SemiColon }, "Expecting SemiColon or Equal");
+    const token = try src.expect(&[_]Token.Tag{ .Equal, .SemiColon }, "Expecting semi-colon or equal");
 
-    if (token.tag != .Equal) {
-        if (is_const) unreachable;
-
-        node.* = Node{
-            .kind = .VarDeclaration,
-            .props = .{
-                .VarDeclaration = .{
-                    .id = identifierNode,
-                    .value = &Node{ .kind = .Null },
-                    .constant = is_const,
-                },
+    return Node.init(.{
+        .kind = .VarDeclaration,
+        .props = .{
+            .VarDeclaration = .{
+                .id = identifierNode,
+                .value = if (token.tag == .Equal) try parse_expr(src) else &Node{ .kind = .Null },
+                .constant = is_const,
             },
-        };
-    } else {
-        const valueNode = try parse_expr(src);
-
-        node.* = Node{
-            .kind = .VarDeclaration,
-            .props = .{
-                .VarDeclaration = .{
-                    .id = identifierNode,
-                    .value = valueNode,
-                    .constant = is_const,
-                },
-            },
-        };
-    }
-
-    return node;
+        },
+    });
 }
 
 fn parse_expr(src: *Reader) Errors!*Node {
@@ -166,15 +160,13 @@ fn parse_comparation_expr(src: *Reader) Errors!*Node {
     const left = try parse_additive_expr(src);
     const operator: Token.Tag = if (src.curr()) |c| c.tag else .EOF;
 
-    const node = try allocator.create(Node);
-
     return switch (operator) {
         .Equal => {
             _ = src.next();
 
             const right = try parse_primary_expr(src);
 
-            node.* = Node{
+            return Node.init(.{
                 .kind = .AssignmentExpression,
                 .props = .{
                     .AssignmentExpression = .{
@@ -183,16 +175,14 @@ fn parse_comparation_expr(src: *Reader) Errors!*Node {
                         .right = right,
                     },
                 },
-            };
-
-            return node;
+            });
         },
         .DoubleEqual => {
             _ = src.next();
 
             const right = try parse_primary_expr(src);
 
-            node.* = Node{
+            return Node.init(.{
                 .kind = .ComparationExpression,
                 .props = .{
                     .ComparationExpression = .{
@@ -201,9 +191,7 @@ fn parse_comparation_expr(src: *Reader) Errors!*Node {
                         .right = right,
                     },
                 },
-            };
-
-            return node;
+            });
         },
         else => left,
     };
@@ -219,8 +207,7 @@ fn parse_additive_expr(src: *Reader) Errors!*Node {
 
         const right = try parse_multiplicitave_expr(src);
 
-        const binary_expr = try allocator.create(Node);
-        binary_expr.* = Node{
+        left = Node.init(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -229,9 +216,7 @@ fn parse_additive_expr(src: *Reader) Errors!*Node {
                     .right = right,
                 },
             },
-        };
-
-        left = binary_expr;
+        });
 
         operator = src.curr().?.tag;
     }
@@ -252,8 +237,7 @@ fn parse_multiplicitave_expr(src: *Reader) Errors!*Node {
 
         const right = try parse_primary_expr(src);
 
-        const binary_expr = try allocator.create(Node);
-        binary_expr.* = Node{
+        left = Node.init(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -262,9 +246,7 @@ fn parse_multiplicitave_expr(src: *Reader) Errors!*Node {
                     .right = right,
                 },
             },
-        };
-
-        left = binary_expr;
+        });
 
         operator = src.curr().?.tag;
     }
@@ -279,32 +261,26 @@ fn parse_primary_expr(src: *Reader) Errors!*Node {
         .Identifier => {
             _ = src.next();
 
-            const node = try allocator.create(Node);
-            node.* = Node{
+            return Node.init(.{
                 .kind = .Identifier,
                 .props = .{
                     .Identifier = .{
                         .name = current.value.?.string,
                     },
                 },
-            };
-
-            return node;
+            });
         },
         .Number => {
             _ = src.next();
 
-            const node = try allocator.create(Node);
-            node.* = Node{
+            return Node.init(.{
                 .kind = .Number,
                 .props = .{
                     .Number = .{
                         .value = current.value.?.number,
                     },
                 },
-            };
-
-            return node;
+            });
         },
         .LeftParen => {
             _ = src.next();

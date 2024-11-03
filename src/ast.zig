@@ -1,10 +1,25 @@
+const std = @import("std");
 const _token = @import("./token.zig");
+const parser = @import("./parser.zig");
 const TokenTag = _token.Tag;
+
+/// List of Node pointers that needs to be deallocated
+pub var node_ptrs_list: std.ArrayList(*const Node) = undefined;
+const allocator = std.heap.page_allocator;
 
 pub const Node = struct {
     kind: Kind,
     props: ?Properties,
     children: []*const Node = &.{},
+
+    pub inline fn init(node: Node) Node {
+        const current = try allocator.create(Node);
+
+        current.* = node;
+        node_ptrs_list.append(current) catch @panic("Cannot register token to be deallocated");
+
+        return current;
+    }
 
     pub const Kind = enum {
         Program,
