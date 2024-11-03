@@ -51,7 +51,7 @@ const Self = @This();
 tag: Tag,
 value: ?Value,
 
-pub const keywords = std.ComptimeStringMap(Tag, .{
+pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "var", Tag.Var },
     .{ "const", Tag.Const },
 });

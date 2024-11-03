@@ -67,10 +67,6 @@ pub const String = struct {
     value: []u8,
 };
 
-pub const String = struct {
-    value: []u8,
-};
-
 pub const Number = struct {
     value: f64,
 };

@@ -6,11 +6,12 @@ const _token = @import("./token.zig");
 const TokenTag = _token.Tag;
 const Env = @import("./env.zig");
 
+const Errors = Parser.Errors || error{
+    InvalidComparationType,
+    UnknownNode,
+};
+
 const Allocator = std.mem.Allocator;
-
-const Errors = Parser.Errors;
-
-const allocator = std.heap.page_allocator;
 
 pub const RuntimeValue = struct {
     type: TokenTag,
@@ -50,6 +51,8 @@ pub const RuntimeValue = struct {
     }
 };
 
+const Self = @This();
+
 allocator: Allocator,
 
 pub fn init(allocator: Allocator) Self {
@@ -59,21 +62,21 @@ pub fn init(allocator: Allocator) Self {
 }
 
 // zig fmt: off
-fn evaluate(node: *const Node) RuntimeValue {
+pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
     return switch (node.kind) {
         .Program => {
             var last_evaluated: ?RuntimeValue = null;
 
             for (node.children) |statement| {
-                last_evaluated = evaluate(statement);
+                last_evaluated = try evaluate(self, statement, env);
             }
 
             return last_evaluated orelse RuntimeValue.mkNull();
         },
         .BinaryExpression => {
             const node_props = node.props.?.BinaryExpression;
-            const left_value = evaluate(node_props.left).value.Number;
-            const right_value = evaluate(node_props.right).value.Number;
+            const left_value = (try evaluate(self, node_props.left, env)).value.Number;
+            const right_value = (try evaluate(self, node_props.right, env)).value.Number;
 
             return RuntimeValue.mkNumber(switch (node_props.operator) {
                 .Plus => left_value + right_value,
@@ -86,24 +89,24 @@ fn evaluate(node: *const Node) RuntimeValue {
         },
         .ComparationExpression => {
             const node_props = node.props.?.ComparationExpression;
-            const left_node = evaluate(node_props.left);
-            const right_node = evaluate(node_props.right);
+            const left_node = try evaluate(self, node_props.left, env);
+            const right_node = try evaluate(self, node_props.right, env);
 
-            const comparation_type: Errors!TokenTag = (
+            const comparation_type: TokenTag = (
                 if (left_node.type == .Number and right_node.type == .Number) TokenTag.Number
                 else if (left_node.type == .String and right_node.type == .String) TokenTag.String
                 else TokenTag.Null
             );
 
-            return RuntimeValue.mkBool(switch (node_props.operator) {
+            return RuntimeValue.mkBool(try switch (node_props.operator) {
                 .DoubleEqual => switch (comparation_type) {
                     .Number => left_node.value.Number == right_node.value.Number,
-                    .String => std.mem.eql([]u8, left_node.value.String, right_node.value.String),
+                    .String => std.mem.eql(u8, left_node.value.String, right_node.value.String),
                     else => Errors.InvalidComparationType
                 },
                 .NotEqual => switch (comparation_type) {
                     .Number => left_node.value.Number != right_node.value.Number,
-                    .String => !std.mem.eql([]u8, left_node.value.String, right_node.value.String),
+                    .String => !std.mem.eql(u8, left_node.value.String, right_node.value.String),
                     else => Errors.InvalidComparationType
                 },
                 .GreaterEqual => switch (comparation_type) {
@@ -124,6 +127,20 @@ fn evaluate(node: *const Node) RuntimeValue {
                 },
                 else => unreachable
             });
+        },
+        .VarDeclaration => {
+            const node_props = node.props.?.VarDeclaration;
+            const id = node_props.id.props.?.Identifier.name;
+            const value = try evaluate(self, node_props.value, env);
+
+            try env.set(id, value);
+
+            return RuntimeValue.mkNull();
+        },
+        .Identifier => {
+            const node_props = node.props.?.Identifier;
+
+            return env.get(node_props.name).?;
         },
         .Number => {
             return RuntimeValue.mkNumber(node.props.?.Number.value);
