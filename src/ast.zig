@@ -13,7 +13,7 @@ pub const Node = struct {
     props: ?Properties = null,
     children: []*const Node = &.{},
 
-    pub inline fn init(node: Node) Allocator.Error!*Node {
+    pub inline fn new(node: Node) Allocator.Error!*Node {
         const current = try allocator.create(Node);
 
         current.* = node;
@@ -29,6 +29,8 @@ pub const Node = struct {
         String,
         Number,
         Boolean,
+        Block,
+        If,
         ObjectExpression,
         ObjectProperty,
         Null,
@@ -44,6 +46,8 @@ pub const Node = struct {
         String: String,
         Number: Number,
         Boolean: Boolean,
+        Block: void,
+        If: If,
         ObjectExpression: ObjectExpression,
         ObjectProperty: ObjectProperty,
         Null: void,
@@ -73,6 +77,12 @@ pub const Number = struct {
 
 pub const Boolean = struct {
     value: u1,
+};
+
+pub const If = struct {
+    expect: *Node,
+    then: *Node,
+    else_stmt: ?*Node,
 };
 
 pub const ObjectExpression = struct {

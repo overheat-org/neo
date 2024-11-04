@@ -65,7 +65,7 @@ pub fn init(allocator: Allocator) Self {
 // zig fmt: off
 pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
     return switch (node.kind) {
-        .Program => {
+        .Program, .Block => {
             var last_evaluated: ?RuntimeValue = null;
 
             for (node.children) |statement| {
@@ -136,6 +136,18 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) Errors!RuntimeValue {
                 },
                 else => unreachable
             });
+        },
+        .If => {
+            const node_props = node.props.?.If;
+            const expect = try evaluate(self, node_props.expect, env);
+            
+            if(expect.value.Boolean == 1) {
+                return try evaluate(self, node_props.then, env);
+            } else {
+                if(node_props.else_stmt) |stmt| return try evaluate(self, stmt, env);
+            }
+
+            return RuntimeValue.mkNull();
         },
         .VarDeclaration => {
             const node_props = node.props.?.VarDeclaration;

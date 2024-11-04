@@ -54,4 +54,8 @@ value: ?Value,
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "var", Tag.Var },
     .{ "const", Tag.Const },
+    .{ "if", Tag.If },
+    .{ "else", Tag.Else },
+    .{ "while", Tag.While },
+    .{ "for", Tag.For },
 });

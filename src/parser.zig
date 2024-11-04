@@ -106,8 +106,9 @@ pub fn deinit(self: Self) void {
 
 fn parse_stmt(self: Self, src: *Reader) Errors!*Node {
     return switch (src.curr().?.tag) {
+        .LeftBrace => parse_block(self, src),
         .Var, .Const => parse_var_decl(self, src),
-
+        .If => parse_if_stmt(self, src),
         else => try parse_expr(self, src),
     };
 }
@@ -121,20 +122,73 @@ fn parse_var_decl(self: Self, src: *Reader) Errors!*Node {
     const token = src.curr().?;
     _ = src.next();
 
-    return try Node.init(.{
+    return try Node.new(.{
         .kind = .VarDeclaration,
         .props = .{
             .VarDeclaration = .{
                 .id = identifierNode,
-                .value = if (token.tag == .Equal) try parse_expr(self, src) else try Node.init(.{ .kind = .Null }),
+                .value = if (token.tag == .Equal) try parse_expr(self, src) else try Node.new(.{ .kind = .Null }),
                 .constant = is_const,
             },
         },
     });
 }
 
+fn parse_if_stmt(self: Self, src: *Reader) Errors!*Node {
+    _ = src.next();
+
+    try src.expect(&.{.LeftParen}, "Expecting '('");
+    _ = src.next();
+
+    const expect = try parse_expr(self, src);
+
+    try src.expect(&.{.RightParen}, "Expecting ')'");
+    _ = src.next();
+
+    const then = try parse_expr(self, src);
+
+    var else_stmt: ?*Node = null;
+
+    if (src.curr().?.tag == .Else) {
+        _ = src.next();
+
+        if(src.curr().?.tag == .If) {
+            else_stmt = try parse_if_stmt(self, src);
+        } else {
+            else_stmt = try parse_expr(self, src);
+        }
+    } 
+
+    return try Node.new(.{
+        .kind = .If,
+        .props = .{
+            .If = .{
+                .expect = expect,
+                .then = then,
+                .else_stmt = else_stmt,
+            },
+        },
+    });
+}
+
 fn parse_expr(self: Self, src: *Reader) Errors!*Node {
-    return try parse_object_expr(self, src);
+    return switch (src.curr().?.tag) {
+        .LeftBrace => parse_block(self, src),
+        else => try parse_object_expr(self, src),
+    };
+}
+
+fn parse_block(self: Self, src: *Reader) Errors!*Node {
+    _ = src.next();
+    var stmts_list = std.ArrayList(*Node).init(self.allocator);
+
+    while (src.curr().?.tag != .RightBrace) {
+        try stmts_list.append(try parse_stmt(self, src));
+    }
+
+    _ = src.next();
+
+    return Node.new(.{ .kind = .Block, .children = try stmts_list.toOwnedSlice() });
 }
 
 fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
@@ -154,7 +208,7 @@ fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
         try props.put(key, value);
     }
 
-    return Node.init(.{
+    return Node.new(.{
         .kind = .ObjectExpression,
         .props = .{
             .ObjectExpression = .{ .properties = props },
@@ -172,7 +226,7 @@ fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
 
             const right = try parse_primary_expr(self, src);
 
-            return Node.init(.{
+            return Node.new(.{
                 .kind = .AssignmentExpression,
                 .props = .{
                     .AssignmentExpression = .{
@@ -188,7 +242,7 @@ fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
 
             const right = try parse_primary_expr(self, src);
 
-            return Node.init(.{
+            return Node.new(.{
                 .kind = .ComparationExpression,
                 .props = .{
                     .ComparationExpression = .{
@@ -213,7 +267,7 @@ fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
 
         const right = try parse_multiplicitave_expr(self, src);
 
-        left = try Node.init(.{
+        left = try Node.new(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -243,7 +297,7 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
 
         const right = try parse_primary_expr(self, src);
 
-        left = try Node.init(.{
+        left = try Node.new(.{
             .kind = .BinaryExpression,
             .props = .{
                 .BinaryExpression = .{
@@ -267,7 +321,7 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
         .Identifier => {
             _ = src.next();
 
-            return try Node.init(.{
+            return try Node.new(.{
                 .kind = .Identifier,
                 .props = .{
                     .Identifier = .{
@@ -279,7 +333,7 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
         .Number => {
             _ = src.next();
 
-            return try Node.init(.{
+            return try Node.new(.{
                 .kind = .Number,
                 .props = .{
                     .Number = .{
@@ -298,6 +352,10 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
 
             return value;
         },
-        else => Errors.UnknownToken,
+        else => {
+            std.debug.print("{any}\n", .{src.curr()});
+
+            return Errors.UnknownToken;
+        },
     };
 }
