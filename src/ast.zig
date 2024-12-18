@@ -68,7 +68,7 @@ pub const VarDeclaration = struct {
 };
 
 pub const String = struct {
-    value: []u8,
+    value: []const u8,
 };
 
 pub const Number = struct {

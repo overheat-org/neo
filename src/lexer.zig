@@ -1,11 +1,13 @@
 const std = @import("std");
 const Token = @import("./token.zig");
 
+const NULL_CHAR = '\x00';
 const allocator = std.heap.page_allocator;
 
 pub const Errors = error{
     UnknownCharacter,
     InvalidCharacter,
+    OutOfMemory,
 };
 
 const Reader = struct {
@@ -28,7 +30,7 @@ const Reader = struct {
             return self.content[self.offset];
         }
 
-        return '\x00';
+        return NULL_CHAR;
     }
 
     inline fn next(self: *Reader) u8 {
@@ -43,7 +45,7 @@ const Reader = struct {
             return self.content[self.offset + 1];
         }
 
-        return '\x00';
+        return NULL_CHAR;
     }
 
     inline fn break_line(self: *Reader) void {
@@ -55,7 +57,7 @@ const Reader = struct {
 const Tokens = struct {
     value: std.ArrayList(Token),
 
-    fn init() Tokens {
+    inline fn init() Tokens {
         return Tokens{
             .value = std.ArrayList(Token).init(allocator),
         };
@@ -169,6 +171,12 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
                 tokens.save(.RightBracket, null);
                 _ = src.next();
             },
+            '\'', '"' => {
+                const str = makeString(curr, &src);
+                const value = Token.Value{ .string = str };
+
+                tokens.save(.String, value);
+            },
             'a'...'z', 'A'...'Z' => {
                 const text = makeText(&src).string;
 
@@ -228,6 +236,22 @@ fn makeNumber(source: *Reader) std.fmt.ParseFloatError!Token.Value {
     const number = try std.fmt.parseFloat(f64, source.content[start_offset..end_offset]);
 
     return Token.Value{ .number = number };
+}
+
+fn makeString(char: u8, source: *Reader) []const u8 {
+    _ = source.next();
+
+    const start_offset = source.offset;
+
+    while (source.curr() != char) {
+        _ = source.next();
+    }
+
+    const end_offset = source.offset;
+
+    _ = source.next();
+
+    return source.content[start_offset..end_offset];
 }
 
 // fn makeHexa(source: *Source) f64 {}

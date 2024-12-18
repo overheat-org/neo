@@ -41,7 +41,7 @@ pub const Tag = enum {
     EOF,
 };
 
-pub const Value = union {
+pub const Value = union(enum) {
     string: []const u8,
     number: f64,
 };
@@ -50,6 +50,15 @@ const Self = @This();
 
 tag: Tag,
 value: ?Value,
+
+pub inline fn print(self: Self) void {
+    const value = if (self.value) |v| switch (v) {
+        .string => v.string,
+        .number => std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{v.number}) catch @panic("Not a number"),
+    } else "Null";
+
+    std.debug.print("Token ({}) = {s}\n", .{ self.tag, value });
+}
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "var", Tag.Var },
