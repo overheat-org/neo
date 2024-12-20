@@ -18,51 +18,60 @@ const RuntimeErrors = enum {
 };
 
 const VesperError = struct {
+    var allocator: Allocator = undefined;
     err: RuntimeErrors,
     span: Span,
     meta: std.StaticStringMap([]const u8),
 
-    pub inline fn new(err: RuntimeErrors, span: Span, meta: anytype) !void {
-        const allocator = std.heap.page_allocator;
+    pub inline fn init(_allocator: Allocator) void {
+        allocator = _allocator;
+    }
 
+    pub inline fn new(err: RuntimeErrors, span: Span, meta: anytype) VesperError {
         const meta_info = @typeInfo(@TypeOf(meta)).Struct;
         const fields = meta_info.fields;
 
         const slice = allocator.alloc([2][]const u8, fields.len) catch unreachable;
 
         comptime var i = 0;
-        inline for(fields) |field| {
+        inline for (fields) |field| {
             slice[i] = .{ field.name, @field(meta, field.name) };
 
             i += 1;
         }
 
-        std.debug.print("{any}", .{slice});
-        
-        const _meta = std.StaticStringMap([]const u8).initComptime(slice);
+        // const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
 
-        return VesperError.throw(.{ .err = err, .span = span, .meta = _meta });
+        return VesperError{ .err = err, .span = span, .meta = .{} };
     }
 
-    pub fn throw(e: VesperError) !void {
+    pub fn throw(e: anytype) noreturn {
+        VesperError._throw(e) catch {};
+
+        std.process.exit(1);
+    }
+
+    fn _throw(_error: anytype) !void {
+        const e = if (@TypeOf(_error) != VesperError) VesperError.new(_error.err, .{ .line = 0, .column = 0 }, _error.meta) else _error;
+
         const stdout = std.io.getStdOut().writer();
 
-        try stdout.print("Error in file '{s}' at line {d}, column {d}: ", .{
-            e.span.file, e.span.line, e.span.column,
-        });
+        // try stdout.print("Error in file '{s}' at line {d}, column {d}: ", .{
+        //     e.span.file, e.span.line, e.span.column,
+        // });
 
         switch (e.err) {
             .InternalError => {
-                try stdout.print("Internal Error: '{s}'", .{@errorName(e.meta.exception)});
+                try stdout.print("Internal Error: '{s}'", .{e.meta.get("exception").?});
             },
             .SyntaxError => {
                 try stdout.print("Syntax Error", .{});
 
-                if (@hasField(e.meta, "expected")) {
-                    try stdout.print(": expected '{s}'", .{e.meta.expected});
+                if (e.meta.has("expected")) {
+                    try stdout.print(": expected '{s}'", .{e.meta.get("expected").?});
                 }
-                if (@hasField(e.meta, "found")) {
-                    try stdout.print(", but found '{s}'", .{e.meta.found});
+                if (e.meta.has("found")) {
+                    try stdout.print(", but found '{s}'", .{e.meta.get("found").?});
                 }
             },
             .DivisionByZero => {
@@ -71,22 +80,22 @@ const VesperError = struct {
             .TypeMismatch => {
                 try stdout.print("Type Mismatch Error", .{});
 
-                if (@hasField(e.meta, "expected")) {
-                    try stdout.print(": expected type '{s}'", .{e.meta.expected});
+                if (e.meta.has("expected")) {
+                    try stdout.print(": expected type '{s}'", .{e.meta.get("expected").?});
                 }
-                if (@hasField(e.meta, "found")) {
-                    try stdout.print(", but found type '{s}'", .{e.meta.found});
+                if (e.meta.has("found")) {
+                    try stdout.print(", but found type '{s}'", .{e.meta.get("found").?});
                 }
             },
             .UndefinedVariable => {
                 try stdout.print("Undefined Variable Error", .{});
 
-                if (@hasField(e.meta, "variable")) {
-                    try stdout.print(": variable '{s}' is not defined", .{e.meta.variable});
+                if (e.meta.has("variable")) {
+                    try stdout.print(": variable '{s}' is not defined", .{e.meta.get("variable").?});
                 }
             },
             .UnknownNode => {
-                try stdout.print("Unknown Node: '{s}'", .{ e.meta.node });
+                try stdout.print("Unknown Node: '{s}'", .{e.meta.get("node").?});
             },
             else => {
                 try stdout.print("Unknown Error", .{});
@@ -94,8 +103,6 @@ const VesperError = struct {
         }
 
         try stdout.print("\n", .{});
-
-        std.process.exit(1);
     }
 };
 
@@ -131,9 +138,11 @@ pub const RuntimeValue = struct {
         };
     }
 
-    pub fn mkString(allocator: Allocator, string: []const u8) !RuntimeValue {
-        const dupe_str = try allocator.dupe(u8, string);
-        std.debug.print("\nmkString {s}\n\n", .{string});
+    pub fn mkString(allocator: Allocator, string: []const u8) RuntimeValue {
+        const dupe_str = allocator.dupe(u8, string) catch |e| VesperError.throw(.{
+            .err = .InternalError,
+            .meta = .{ .exception = @errorName(e) },
+        });
 
         return .{
             .type = TokenTag.String,
@@ -147,13 +156,15 @@ const Self = @This();
 allocator: Allocator,
 
 pub fn init(allocator: Allocator) Self {
+    VesperError.init(allocator);
+
     return Self{
         .allocator = allocator,
     };
 }
 
 // zig fmt: off
-pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
+pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {    
     return switch (node.kind) {
         .Program, .Block => {
             var last_evaluated: ?RuntimeValue = null;
@@ -171,7 +182,11 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
             const right = evaluate(self, node_props.right, env);
             
             if (left.type != .Number or right.type != .Number) {
-                try VesperError.new(.TypeMismatch, node.span, .{ .expected = "Number", .found = @tagName(node.kind) });
+                VesperError.throw(.{ 
+                    .err = .TypeMismatch, 
+                    .span = node.span, 
+                    .meta = .{ .expected = "Number", .found = @tagName(node.kind) } 
+                });
             }
             
             const left_value = left.value.Number;
@@ -183,10 +198,10 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
                 .Asterisk => left_value * right_value,
                 .Slash => 
                     if(right_value != 0) left_value / right_value
-                    else VesperError.new(.DivisionByZero, node.span, .{}),
+                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
                 .Percent => 
                     if(right_value != 0) @mod(left_value, right_value)
-                    else VesperError.new(.DivisionByZero, node.span, .{}),
+                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
                 else => unreachable,
             });
         },
@@ -201,34 +216,35 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
                 else TokenTag.Null
             );
 
-            const err = VesperError{ 
-                .err = .TypeMismatch, 
-                .meta = .{ .expected = "Number", .found = @tagName(comparation_type) },
-            };
+            const err = VesperError.new(
+                .TypeMismatch, 
+                .{ .line = 0, .column = 0 }, 
+                .{ .expected = "Number", .found = @tagName(comparation_type) }
+            );
 
             const boolean: bool = switch (node_props.operator) {
                 .DoubleEqual => switch (comparation_type) {
                     .Number => left_node.value.Number == right_node.value.Number,
                     .String => std.mem.eql(u8, left_node.value.String, right_node.value.String),
-                    else => try VesperError.throw(err)
+                    else => VesperError.throw(err)
                 },
                 .NotEqual => switch (comparation_type) {
                     .Number => left_node.value.Number != right_node.value.Number,
                     .String => !std.mem.eql(u8, left_node.value.String, right_node.value.String),
-                    else => try VesperError.throw(err)
+                    else => VesperError.throw(err)
                 },
                 .GreaterEqual => 
                     if(comparation_type == .Number) left_node.value.Number >= right_node.value.Number 
-                    else try VesperError.throw(err),
+                    else VesperError.throw(err),
                 .GreaterThan => 
                     if(comparation_type == .Number) left_node.value.Number > right_node.value.Number
-                    else try VesperError.throw(err),
+                    else VesperError.throw(err),
                 .LessEqual => 
                     if(comparation_type == .Number) left_node.value.Number <= right_node.value.Number
-                    else try VesperError.throw(err),
+                    else VesperError.throw(err),
                 .LessThan => 
                     if(comparation_type == .Number) left_node.value.Number < right_node.value.Number
-                    else try VesperError.throw(err),
+                    else VesperError.throw(err),
                 else => unreachable
             };
 
@@ -249,9 +265,13 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
         .VarDeclaration => {
             const node_props = node.props.?.VarDeclaration;
             const id = node_props.id.props.?.Identifier.name;
-            const value =  evaluate(self, node_props.value, env);
+            const value = evaluate(self, node_props.value, env);
 
-            env.set(id, value) catch unreachable;
+            env.set(id, value) catch |e| VesperError.throw(.{
+                .err = .InternalError,
+                .span = .{},
+                .meta = .{ .exception = @errorName(e) },
+            });
 
             return RuntimeValue.mkNull();
         },
@@ -262,7 +282,7 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
                 return value;
             }
 
-            try VesperError.new(.UndefinedVariable, node.span, .{ .variable = node_props.name });
+            VesperError.throw(.{ .err = .UndefinedVariable, .span = node.span, .meta = .{ .variable = node_props.name } });
         },
         .Number => {
             return RuntimeValue.mkNumber(node.props.?.Number.value);
@@ -270,7 +290,7 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
         .String => {
             return RuntimeValue.mkString(self.allocator, node.props.?.String.value);
         },
-        else => try VesperError.new(.UnknownNode, node.span, .{ .node = @tagName(node.kind) }),
+        else => VesperError.throw(.{ .err = .UnknownNode, .span = node.span, .meta = .{ .node = @tagName(node.kind) }}),
     };
 }
 // zig fmt: on

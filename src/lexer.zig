@@ -59,9 +59,9 @@ const Tokens = struct {
     value: std.ArrayList(Token),
     src: *Reader,
 
-    inline fn init(self: Tokens) Tokens {
+    inline fn init(src: *Reader) Tokens {
         return Tokens{
-            .src = self.src,
+            .src = src,
             .value = std.ArrayList(Token).init(allocator),
         };
     }

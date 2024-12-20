@@ -191,18 +191,12 @@ fn parse_block(self: Self, src: *Reader) Errors!*Node {
 
     _ = src.next();
 
-    return Node.new(.{ 
-        .kind = .Block, 
-        .children = try stmts_list.toOwnedSlice(), 
-        .span = _block.span
-    });
+    return Node.new(.{ .kind = .Block, .children = try stmts_list.toOwnedSlice(), .span = _block.span });
 }
 
 inline fn parse_string_expr(_: Self, src: *Reader) Errors!*Node {
     const curr = src.curr();
     _ = src.next();
-
-    curr.?.print();
 
     return try Node.new(.{ .kind = .String, .props = .{ .String = .{ .value = curr.?.value.?.string } } });
 }
@@ -288,17 +282,13 @@ fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
 
         const right = try parse_multiplicitave_expr(self, src);
 
-        left = try Node.new(.{
-            .kind = .BinaryExpression,
-            .props = .{
-                .BinaryExpression = .{
-                    .left = left,
-                    .operator = operator,
-                    .right = right,
-                },
+        left = try Node.new(.{ .kind = .BinaryExpression, .props = .{
+            .BinaryExpression = .{
+                .left = left,
+                .operator = operator,
+                .right = right,
             },
-            .span = _expr.span
-        });
+        }, .span = _expr.span });
 
         operator = src.curr().?.tag;
     }
