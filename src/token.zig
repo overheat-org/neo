@@ -46,10 +46,16 @@ pub const Value = union {
     number: f64,
 };
 
+pub const Span = struct {
+    line: usize,
+    column: usize,
+};
+
 const Self = @This();
 
 tag: Tag,
 value: ?Value,
+span: Span,
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "var", Tag.Var },

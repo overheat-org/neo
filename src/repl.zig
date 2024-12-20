@@ -23,7 +23,7 @@ pub fn REPL() !void {
         const runtime = Runtime.init(allocator);
 
         const ast = try parser.parse(source);
-        const rt = try runtime.evaluate(&ast, &env);
+        const rt = runtime.evaluate(&ast, &env);
 
         const result = switch (rt.type) {
             .Number => try std.fmt.allocPrint(allocator, "{d}", .{rt.value.Number}),

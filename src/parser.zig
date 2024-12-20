@@ -135,7 +135,7 @@ fn parse_var_decl(self: Self, src: *Reader) Errors!*Node {
 }
 
 fn parse_if_stmt(self: Self, src: *Reader) Errors!*Node {
-    _ = src.next();
+    const _if = src.next();
 
     try src.expect(&.{.LeftParen}, "Expecting '('");
     _ = src.next();
@@ -168,6 +168,7 @@ fn parse_if_stmt(self: Self, src: *Reader) Errors!*Node {
                 .else_stmt = else_stmt,
             },
         },
+        .span = _if.span,
     });
 }
 
@@ -179,7 +180,7 @@ fn parse_expr(self: Self, src: *Reader) Errors!*Node {
 }
 
 fn parse_block(self: Self, src: *Reader) Errors!*Node {
-    _ = src.next();
+    const _block = src.next();
     var stmts_list = std.ArrayList(*Node).init(self.allocator);
 
     while (src.curr().?.tag != .RightBrace) {
@@ -188,11 +189,17 @@ fn parse_block(self: Self, src: *Reader) Errors!*Node {
 
     _ = src.next();
 
-    return Node.new(.{ .kind = .Block, .children = try stmts_list.toOwnedSlice() });
+    return Node.new(.{ 
+        .kind = .Block, 
+        .children = try stmts_list.toOwnedSlice(), 
+        .span = _block.span
+    });
 }
 
 fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
-    if (src.curr().?.tag != .LeftBrace) return parse_comparation_expr(self, src);
+    const _object = src.curr();
+
+    if (_object.?.tag != .LeftBrace) return parse_comparation_expr(self, src);
 
     _ = src.next();
 
@@ -213,6 +220,7 @@ fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
         .props = .{
             .ObjectExpression = .{ .properties = props },
         },
+        .span = _object.?.span,
     });
 }
 
@@ -222,7 +230,7 @@ fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
 
     return switch (operator) {
         .Equal => {
-            _ = src.next();
+            const _eq = src.next();
 
             const right = try parse_primary_expr(self, src);
 
@@ -235,10 +243,11 @@ fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
                         .right = right,
                     },
                 },
+                .span = _eq.span,
             });
         },
         .LessEqual, .LessThan, .GreaterThan, .GreaterEqual, .NotEqual, .DoubleEqual => {
-            _ = src.next();
+            const _comparation = src.next();
 
             const right = try parse_primary_expr(self, src);
 
@@ -251,6 +260,7 @@ fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
                         .right = right,
                     },
                 },
+                .span = _comparation.span,
             });
         },
         else => left,
@@ -263,7 +273,7 @@ fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
     var operator = src.curr().?.tag;
 
     while (operator == .Plus or operator == .Minus) {
-        _ = src.next();
+        const _expr = src.next();
 
         const right = try parse_multiplicitave_expr(self, src);
 
@@ -276,6 +286,7 @@ fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
                     .right = right,
                 },
             },
+            .span = _expr.span
         });
 
         operator = src.curr().?.tag;
@@ -293,7 +304,7 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
         operator == .Asterisk or
         operator == .Percent)
     {
-        _ = src.next();
+        const _expr = src.next();
 
         const right = try parse_primary_expr(self, src);
 
@@ -306,6 +317,7 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
                     .right = right,
                 },
             },
+            .span = _expr.span,
         });
 
         operator = src.curr().?.tag;
@@ -319,7 +331,7 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
 
     return switch (current.tag) {
         .Identifier => {
-            _ = src.next();
+            const _id = src.next();
 
             return try Node.new(.{
                 .kind = .Identifier,
@@ -328,10 +340,11 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
                         .name = current.value.?.string,
                     },
                 },
+                .span = _id.span,
             });
         },
         .Number => {
-            _ = src.next();
+            const _number = src.next();
 
             return try Node.new(.{
                 .kind = .Number,
@@ -340,6 +353,7 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
                         .value = current.value.?.number,
                     },
                 },
+                .span = _number.span,
             });
         },
         .LeftParen => {

@@ -2,6 +2,7 @@ const std = @import("std");
 const _token = @import("./token.zig");
 const parser = @import("./parser.zig");
 const TokenTag = _token.Tag;
+const Span = _token.Span;
 
 /// List of Node pointers that needs to be deallocated
 pub var node_ptrs_list: std.ArrayList(*Node) = undefined;
@@ -9,6 +10,7 @@ const allocator = std.heap.page_allocator;
 const Allocator = std.mem.Allocator;
 
 pub const Node = struct {
+    span: Span = Span{ .column = 0, .line = 0 },
     kind: Kind,
     props: ?Properties = null,
     children: []*const Node = &.{},

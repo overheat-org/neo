@@ -1,5 +1,6 @@
 const std = @import("std");
 const Token = @import("./token.zig");
+const Span = Token.Span;
 
 const allocator = std.heap.page_allocator;
 
@@ -54,27 +55,30 @@ const Reader = struct {
 
 const Tokens = struct {
     value: std.ArrayList(Token),
+    src: *Reader,
 
-    fn init() Tokens {
+    fn init(src: *Reader) Tokens {
         return Tokens{
+            .src = src,
             .value = std.ArrayList(Token).init(allocator),
         };
     }
 
     fn save(self: *Tokens, tag: Token.Tag, value: ?Token.Value) void {
-        self.value.append(Token{ .tag = tag, .value = value }) catch @panic("Can't save token on Lexer");
+        const span = Span{ .line = self.src.line_pos, .column = self.src.column_pos };
+
+        self.value.append(Token{ .tag = tag, .value = value, .span = span }) catch unreachable;
     }
 };
 
 pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
     var src = Reader.init(source);
-    var tokens = Tokens.init();
+    var tokens = Tokens.init(&src);
 
     while (src.offset < src.content.len) {
         const curr = src.curr();
 
         switch (curr) {
-            // zig fmt: off
             ' ', '\t', '\r' => _ = src.next(),
             '\n' => src.break_line(),
             '=' => {
@@ -189,7 +193,6 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
             ),
             '1'...'9' => tokens.save(.Number, try makeNumber(&src)),
             else => return Errors.UnknownCharacter,
-            // zig fmt: on
         }
     }
 
