@@ -52,7 +52,7 @@ const Reader = struct {
         return self.tokens.items[self.offset];
     }
 
-    inline fn expect(self: *Reader, comptime tags: []const Token.Tag, comptime string: []const u8) !void {
+    fn expect(self: *Reader, comptime tags: []const Token.Tag, comptime string: []const u8) noreturn {
         const token = self.curr().?;
         for (tags) |tag| {
             if (tag == token.tag) return;
@@ -327,47 +327,53 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
     return left;
 }
 
+inline fn parse_number_expr(_: Self, src: *Reader) Errors!*Node {
+    const _number = src.next();
+
+    return try Node.new(.{
+        .kind = .Number,
+        .props = .{
+            .Number = .{
+                .value = src.curr().?.value.?.number,
+            },
+        },
+        .span = _number.span,
+    });
+}
+
+inline fn parse_identifier(_: Self, src: *Reader) Errors!*Node {
+    const _id = src.next();
+
+    return try Node.new(.{
+        .kind = .Identifier,
+        .props = .{
+            .Identifier = .{
+                .name = src.curr().?.value.?.string,
+            },
+        },
+        .span = _id.span,
+    });
+}
+
+inline fn parse_paren(self: Self, src: *Reader) Errors!*Node {
+    _ = src.next();
+
+    const value = try parse_expr(self, src);
+
+    _ = try src.expect(&.{.RightParen}, "Expecting \")\"");
+    _ = src.next();
+
+    return value;
+}
+
 fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
     const current = src.curr().?;
 
     return switch (current.tag) {
-        .Identifier => {
-            const _id = src.next();
-
-            return try Node.new(.{
-                .kind = .Identifier,
-                .props = .{
-                    .Identifier = .{
-                        .name = current.value.?.string,
-                    },
-                },
-                .span = _id.span,
-            });
-        },
+        .Identifier => parse_identifier(self, src),
         .String => parse_string_expr(self, src),
-        .Number => {
-            const _number = src.next();
-
-            return try Node.new(.{
-                .kind = .Number,
-                .props = .{
-                    .Number = .{
-                        .value = current.value.?.number,
-                    },
-                },
-                .span = _number.span,
-            });
-        },
-        .LeftParen => {
-            _ = src.next();
-
-            const value = try parse_expr(self, src);
-
-            _ = try src.expect(&.{.RightParen}, "Expecting \")\"");
-            _ = src.next();
-
-            return value;
-        },
+        .Number => parse_number_expr(self, src),
+        .LeftParen => parse_paren(self, src),
         else => {
             std.debug.print("{any}\n", .{src.curr()});
 

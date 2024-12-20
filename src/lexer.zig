@@ -66,7 +66,7 @@ const Tokens = struct {
         };
     }
 
-    fn save(self: *Tokens, tag: Token.Tag, value: ?Token.Value) void {
+    inline fn save(self: *Tokens, tag: Token.Tag, value: ?Token.Value) void {
         const span = Span{ .line = self.src.line_pos, .column = self.src.column_pos };
 
         self.value.append(Token{ .tag = tag, .value = value, .span = span }) catch unreachable;
@@ -184,21 +184,19 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
             'a'...'z', 'A'...'Z' => {
                 const text = makeText(&src).string;
 
-                if(Token.keywords.has(text)) {
+                if (Token.keywords.has(text)) {
                     tokens.save(Token.keywords.get(text).?, null);
-                }
-                else {
+                } else {
                     tokens.save(.Identifier, .{ .string = text });
                 }
             },
             '0' => tokens.save(.Number,
-                // if (source.peek() == 'x')
-                //     makeHexa(&source)
-                // else if (source.peek() == 'b')
-                //     makeBinary(&source)
-                // else 
-                    try makeNumber(&src)
-            ),
+            // if (source.peek() == 'x')
+            //     makeHexa(&source)
+            // else if (source.peek() == 'b')
+            //     makeBinary(&source)
+            // else
+            try makeNumber(&src)),
             '1'...'9' => tokens.save(.Number, try makeNumber(&src)),
             else => return Errors.UnknownCharacter,
         }
@@ -261,10 +259,10 @@ fn makeString(char: u8, source: *Reader) []const u8 {
 
 // fn makeBinary(source: *Source) f64 {}
 
-fn isNumber(char: u8) bool {
+inline fn isNumber(char: u8) bool {
     return char >= '0' and char <= '9';
 }
 
-fn isLetter(char: u8) bool {
+inline fn isLetter(char: u8) bool {
     return (char >= 'a' and char <= 'z') or (char >= 'A' and char <= 'Z');
 }

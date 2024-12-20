@@ -5,107 +5,7 @@ const Node = _ast.Node;
 const _token = @import("./token.zig");
 const TokenTag = _token.Tag;
 const Env = @import("./env.zig");
-const Span = _token.Span;
-
-const RuntimeErrors = enum {
-    InternalError,
-    SyntaxError,
-    DivisionByZero,
-    TypeMismatch,
-    UnknownNode,
-    UndefinedVariable,
-    InvalidExpression,
-};
-
-const VesperError = struct {
-    var allocator: Allocator = undefined;
-    err: RuntimeErrors,
-    span: Span,
-    meta: std.StaticStringMap([]const u8),
-
-    pub inline fn init(_allocator: Allocator) void {
-        allocator = _allocator;
-    }
-
-    pub inline fn new(err: RuntimeErrors, span: Span, meta: anytype) VesperError {
-        const meta_info = @typeInfo(@TypeOf(meta)).Struct;
-        const fields = meta_info.fields;
-
-        const slice = allocator.alloc([2][]const u8, fields.len) catch unreachable;
-
-        comptime var i = 0;
-        inline for (fields) |field| {
-            slice[i] = .{ field.name, @field(meta, field.name) };
-
-            i += 1;
-        }
-
-        // const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
-
-        return VesperError{ .err = err, .span = span, .meta = .{} };
-    }
-
-    pub fn throw(e: anytype) noreturn {
-        VesperError._throw(e) catch {};
-
-        std.process.exit(1);
-    }
-
-    fn _throw(_error: anytype) !void {
-        const e = if (@TypeOf(_error) != VesperError) VesperError.new(_error.err, .{ .line = 0, .column = 0 }, _error.meta) else _error;
-
-        const stdout = std.io.getStdOut().writer();
-
-        // try stdout.print("Error in file '{s}' at line {d}, column {d}: ", .{
-        //     e.span.file, e.span.line, e.span.column,
-        // });
-
-        switch (e.err) {
-            .InternalError => {
-                try stdout.print("Internal Error: '{s}'", .{e.meta.get("exception").?});
-            },
-            .SyntaxError => {
-                try stdout.print("Syntax Error", .{});
-
-                if (e.meta.has("expected")) {
-                    try stdout.print(": expected '{s}'", .{e.meta.get("expected").?});
-                }
-                if (e.meta.has("found")) {
-                    try stdout.print(", but found '{s}'", .{e.meta.get("found").?});
-                }
-            },
-            .DivisionByZero => {
-                try stdout.print("Division by Zero Error", .{});
-            },
-            .TypeMismatch => {
-                try stdout.print("Type Mismatch Error", .{});
-
-                if (e.meta.has("expected")) {
-                    try stdout.print(": expected type '{s}'", .{e.meta.get("expected").?});
-                }
-                if (e.meta.has("found")) {
-                    try stdout.print(", but found type '{s}'", .{e.meta.get("found").?});
-                }
-            },
-            .UndefinedVariable => {
-                try stdout.print("Undefined Variable Error", .{});
-
-                if (e.meta.has("variable")) {
-                    try stdout.print(": variable '{s}' is not defined", .{e.meta.get("variable").?});
-                }
-            },
-            .UnknownNode => {
-                try stdout.print("Unknown Node: '{s}'", .{e.meta.get("node").?});
-            },
-            else => {
-                try stdout.print("Unknown Error", .{});
-            },
-        }
-
-        try stdout.print("\n", .{});
-    }
-};
-
+const VesperError = @import("./reporter.zig");
 const Allocator = std.mem.Allocator;
 
 pub const RuntimeValue = struct {
@@ -139,6 +39,10 @@ pub const RuntimeValue = struct {
     }
 
     pub fn mkString(allocator: Allocator, string: []const u8) RuntimeValue {
+        defer allocator.free(string);
+
+        std.debug.print("\n\n{any}\n\n", .{string});
+
         const dupe_str = allocator.dupe(u8, string) catch |e| VesperError.throw(.{
             .err = .InternalError,
             .meta = .{ .exception = @errorName(e) },
@@ -178,32 +82,39 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
         .BinaryExpression => {
             const node_props = node.props.?.BinaryExpression;
             
-            const left = evaluate(self, node_props.left, env);
-            const right = evaluate(self, node_props.right, env);
+            const left_node = evaluate(self, node_props.left, env);
+            const right_node = evaluate(self, node_props.right, env);
             
-            if (left.type != .Number or right.type != .Number) {
-                VesperError.throw(.{ 
-                    .err = .TypeMismatch, 
-                    .span = node.span, 
-                    .meta = .{ .expected = "Number", .found = @tagName(node.kind) } 
-                });
-            }
+            const err = VesperError.new(.TypeMismatch, node.span, .{ .expected = "Number", .found = @tagName(node.kind) });
+            const binary_type: TokenTag = (
+                if (left_node.type == .Number and right_node.type == .Number) TokenTag.Number
+                else if (left_node.type == .String and right_node.type == .String) TokenTag.String
+                else TokenTag.Null
+            );
             
-            const left_value = left.value.Number;
-            const right_value = right.value.Number;
-            
-            return RuntimeValue.mkNumber(switch (node_props.operator) {
-                .Plus => left_value + right_value,
-                .Minus => left_value - right_value,
-                .Asterisk => left_value * right_value,
+            const left_value = left_node.value;
+            const right_value = right_node.value;
+
+            return switch (node_props.operator) {
+                .Plus => switch (binary_type) {
+                    .Number => RuntimeValue.mkNumber(left_value.Number + right_value.Number),
+                    .String => {
+                        const concatenated = std.mem.concat(self.allocator, u8, &.{ left_value.String, right_value.String })
+                            catch VesperError.throw(.{ .err = .OutOfMemory, .span = node.span, .meta = .{} });
+                        return RuntimeValue.mkString(self.allocator, concatenated);
+                    },
+                    else => VesperError.throw(err) 
+                },
+                .Minus => RuntimeValue.mkNumber(left_value.Number - right_value.Number),
+                .Asterisk => RuntimeValue.mkNumber(left_value.Number * right_value.Number),
                 .Slash => 
-                    if(right_value != 0) left_value / right_value
+                    if(right_value.Number != 0) RuntimeValue.mkNumber(left_value.Number / right_value.Number)
                     else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
                 .Percent => 
-                    if(right_value != 0) @mod(left_value, right_value)
+                    if(right_value.Number != 0) RuntimeValue.mkNumber(@mod(left_value.Number, right_value.Number))
                     else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
                 else => unreachable,
-            });
+            };
         },
         .ComparationExpression => {
             const node_props = node.props.?.ComparationExpression;
@@ -267,6 +178,7 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
             const id = node_props.id.props.?.Identifier.name;
             const value = evaluate(self, node_props.value, env);
 
+            std.debug.print("\n\nID: {s}\n", .{id});
             env.set(id, value) catch |e| VesperError.throw(.{
                 .err = .InternalError,
                 .span = .{},

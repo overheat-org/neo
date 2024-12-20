@@ -31,6 +31,8 @@ pub fn set(self: *Self, name: []const u8, value: RuntimeValue) Allocator.Error!v
         self.allocator.free(old_key);
     }
 
+    std.debug.print("\n\nDUPED: {s}\nNAME: {s}", .{ dupe_name, name });
+
     try self.variables.put(dupe_name, value);
 }
 
