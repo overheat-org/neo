@@ -11,7 +11,9 @@ const Ast = @import("./ast.zig");
 
 const Self = @This();
 
-pub const Errors = Lexer.Errors || std.mem.Allocator.Error || error{UnknownToken};
+pub const Errors = Lexer.Errors || std.mem.Allocator.Error || error{
+    UnknownToken,
+};
 
 const Reader = struct {
     offset: usize,
@@ -152,12 +154,12 @@ fn parse_if_stmt(self: Self, src: *Reader) Errors!*Node {
     if (src.curr().?.tag == .Else) {
         _ = src.next();
 
-        if(src.curr().?.tag == .If) {
+        if (src.curr().?.tag == .If) {
             else_stmt = try parse_if_stmt(self, src);
         } else {
             else_stmt = try parse_expr(self, src);
         }
-    } 
+    }
 
     return try Node.new(.{
         .kind = .If,
@@ -194,6 +196,15 @@ fn parse_block(self: Self, src: *Reader) Errors!*Node {
         .children = try stmts_list.toOwnedSlice(), 
         .span = _block.span
     });
+}
+
+inline fn parse_string_expr(_: Self, src: *Reader) Errors!*Node {
+    const curr = src.curr();
+    _ = src.next();
+
+    curr.?.print();
+
+    return try Node.new(.{ .kind = .String, .props = .{ .String = .{ .value = curr.?.value.?.string } } });
 }
 
 fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
@@ -343,6 +354,7 @@ fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
                 .span = _id.span,
             });
         },
+        .String => parse_string_expr(self, src),
         .Number => {
             const _number = src.next();
 

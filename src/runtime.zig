@@ -107,7 +107,7 @@ pub const RuntimeValue = struct {
         Number: f64,
         Null: u0,
         Boolean: u1,
-        String: []u8,
+        String: []const u8,
     },
 
     pub inline fn mkBool(boolean: bool) RuntimeValue {
@@ -131,10 +131,13 @@ pub const RuntimeValue = struct {
         };
     }
 
-    pub fn mkString(string: []u8) RuntimeValue {
+    pub fn mkString(allocator: Allocator, string: []const u8) !RuntimeValue {
+        const dupe_str = try allocator.dupe(u8, string);
+        std.debug.print("\nmkString {s}\n\n", .{string});
+
         return .{
             .type = TokenTag.String,
-            .value = .{ .String = string },
+            .value = .{ .String = dupe_str },
         };
     }
 };
@@ -263,6 +266,9 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
         },
         .Number => {
             return RuntimeValue.mkNumber(node.props.?.Number.value);
+        },
+        .String => {
+            return RuntimeValue.mkString(self.allocator, node.props.?.String.value);
         },
         else => try VesperError.new(.UnknownNode, node.span, .{ .node = @tagName(node.kind) }),
     };

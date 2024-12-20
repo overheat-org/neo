@@ -29,6 +29,7 @@ pub fn REPL() !void {
             .Number => try std.fmt.allocPrint(allocator, "{d}", .{rt.value.Number}),
             .Null => try std.fmt.allocPrint(allocator, "null", .{}),
             .Boolean => try std.fmt.allocPrint(allocator, "{s}", .{if (rt.value.Boolean == 1) "true" else "false"}),
+            .String => try std.fmt.allocPrint(allocator, "\"{s}\"", .{rt.value.String}),
             else => unreachable,
         };
         defer allocator.free(result);
