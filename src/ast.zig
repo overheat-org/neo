@@ -3,9 +3,12 @@ const _token = @import("./token.zig");
 const parser = @import("./parser.zig");
 const TokenTag = _token.Tag;
 const Span = _token.Span;
+const VesperError = @import("./reporter.zig");
 
 /// List of Node pointers that needs to be deallocated
 pub var node_ptrs_list: std.ArrayList(*Node) = undefined;
+
+/// TODO: make this more flexible
 const allocator = std.heap.page_allocator;
 const Allocator = std.mem.Allocator;
 
@@ -15,11 +18,11 @@ pub const Node = struct {
     props: ?Properties = null,
     children: []*const Node = &.{},
 
-    pub inline fn new(node: Node) Allocator.Error!*Node {
-        const current = try allocator.create(Node);
+    pub inline fn new(node: Node) *Node {
+        const current = allocator.create(Node) catch VesperError.throw(.{ .err = .OutOfMemory });
 
         current.* = node;
-        try node_ptrs_list.append(current);
+        node_ptrs_list.append(current) catch VesperError.throw(.{ .err = .OutOfMemory });
 
         return current;
     }
@@ -84,7 +87,7 @@ pub const Boolean = struct {
 pub const If = struct {
     expect: *Node,
     then: *Node,
-    else_stmt: ?*Node,
+    children: ?*Node,
 };
 
 pub const ObjectExpression = struct {

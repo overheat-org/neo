@@ -100,7 +100,7 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
                     .Number => RuntimeValue.mkNumber(left_value.Number + right_value.Number),
                     .String => {
                         const concatenated = std.mem.concat(self.allocator, u8, &.{ left_value.String, right_value.String })
-                            catch VesperError.throw(.{ .err = .OutOfMemory, .span = node.span, .meta = .{} });
+                            catch VesperError.throw(.{ .err = .OutOfMemory, .span = node.span });
                         return RuntimeValue.mkString(self.allocator, concatenated);
                     },
                     else => VesperError.throw(err) 
@@ -109,10 +109,10 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
                 .Asterisk => RuntimeValue.mkNumber(left_value.Number * right_value.Number),
                 .Slash => 
                     if(right_value.Number != 0) RuntimeValue.mkNumber(left_value.Number / right_value.Number)
-                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
+                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span }),
                 .Percent => 
                     if(right_value.Number != 0) RuntimeValue.mkNumber(@mod(left_value.Number, right_value.Number))
-                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span, .meta = .{} }),
+                    else VesperError.throw(.{ .err = .DivisionByZero, .span = node.span }),
                 else => unreachable,
             };
         },
@@ -168,7 +168,7 @@ pub fn evaluate(self: Self, node: *const Node, env: *Env) RuntimeValue {
             if(expect.value.Boolean == 1) {
                 return evaluate(self, node_props.then, env);
             } else {
-                if(node_props.else_stmt) |stmt| return evaluate(self, stmt, env);
+                if(node_props.children) |stmt| return evaluate(self, stmt, env);
             }
 
             return RuntimeValue.mkNull();

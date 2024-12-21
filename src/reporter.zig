@@ -3,7 +3,7 @@ const _token = @import("./token.zig");
 const Span = _token.Span;
 const Allocator = std.mem.Allocator;
 
-const RuntimeErrors = enum {
+const Errors = enum {
     InternalError,
     SyntaxError,
     DivisionByZero,
@@ -18,7 +18,7 @@ var allocator: Allocator = undefined;
 
 const VesperError = @This();
 
-err: RuntimeErrors,
+err: Errors,
 span: Span,
 meta: std.StaticStringMap([]const u8),
 
@@ -26,7 +26,7 @@ pub inline fn init(_allocator: Allocator) void {
     allocator = _allocator;
 }
 
-pub inline fn new(err: RuntimeErrors, span: Span, meta: anytype) VesperError {
+pub fn new(err: Errors, span: Span, meta: anytype) VesperError {
     const meta_info = @typeInfo(@TypeOf(meta)).Struct;
     const fields = meta_info.fields;
 
@@ -39,9 +39,9 @@ pub inline fn new(err: RuntimeErrors, span: Span, meta: anytype) VesperError {
         i += 1;
     }
 
-    // const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
+    const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
 
-    return VesperError{ .err = err, .span = span, .meta = .{} };
+    return VesperError{ .err = err, .span = span, .meta = _meta };
 }
 
 pub fn throw(e: anytype) noreturn {
@@ -50,8 +50,10 @@ pub fn throw(e: anytype) noreturn {
     std.process.exit(1);
 }
 
-fn _throw_(_error: anytype) !void {
-    const e = if (@TypeOf(_error) != VesperError) VesperError.new(_error.err, .{ .line = 0, .column = 0 }, _error.meta) else _error;
+fn _throw_(err: anytype) !void {
+    const meta = if(@hasField(@TypeOf(err), "meta")) err.meta else .{};
+    
+    const e = if (@TypeOf(err) != VesperError) VesperError.new(err.err, .{ .line = 0, .column = 0 }, meta) else err;
 
     const stdout = std.io.getStdOut().writer();
 

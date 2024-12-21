@@ -73,4 +73,5 @@ pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "else", Tag.Else },
     .{ "while", Tag.While },
     .{ "for", Tag.For },
+    .{ "fn", Tag.Fn }
 });

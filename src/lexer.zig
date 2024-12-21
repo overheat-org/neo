@@ -1,15 +1,10 @@
 const std = @import("std");
 const Token = @import("./token.zig");
 const Span = Token.Span;
+const VesperError = @import("./reporter.zig");
 
 const NULL_CHAR = '\x00';
 const allocator = std.heap.page_allocator;
-
-pub const Errors = error{
-    UnknownCharacter,
-    InvalidCharacter,
-    OutOfMemory,
-};
 
 const Reader = struct {
     offset: usize,
@@ -73,7 +68,7 @@ const Tokens = struct {
     }
 };
 
-pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
+pub fn init(source: []const u8) std.ArrayList(Token) {
     var src = Reader.init(source);
     var tokens = Tokens.init(&src);
 
@@ -196,9 +191,13 @@ pub fn init(source: []const u8) Errors!std.ArrayList(Token) {
             // else if (source.peek() == 'b')
             //     makeBinary(&source)
             // else
-            try makeNumber(&src)),
-            '1'...'9' => tokens.save(.Number, try makeNumber(&src)),
-            else => return Errors.UnknownCharacter,
+            makeNumber(&src)),
+            '1'...'9' => tokens.save(.Number, makeNumber(&src)),
+            else => unreachable
+            // else => VesperError.throw(.{
+            //     .err = .SyntaxError,
+            //     .meta = .{ .character = [_]u8{ curr } }
+            // }),
         }
     }
 
@@ -223,7 +222,7 @@ fn makeText(source: *Reader) Token.Value {
     return Token.Value{ .string = identifier };
 }
 
-fn makeNumber(source: *Reader) std.fmt.ParseFloatError!Token.Value {
+fn makeNumber(source: *Reader) Token.Value {
     const start_offset = source.offset;
 
     while (isNumber(source.peek())) {
@@ -233,8 +232,10 @@ fn makeNumber(source: *Reader) std.fmt.ParseFloatError!Token.Value {
     _ = source.next();
 
     const end_offset = if (start_offset == source.offset) source.offset + 1 else source.offset;
+    const slice = source.content[start_offset..end_offset];
 
-    const number = try std.fmt.parseFloat(f64, source.content[start_offset..end_offset]);
+    const number = std.fmt.parseFloat(f64, slice) 
+        catch VesperError.throw(.{ .err = .TypeMismatch, .meta = .{ .expected = "number", .found = slice } });
 
     return Token.Value{ .number = number };
 }

@@ -22,7 +22,7 @@ pub fn REPL() !void {
 
         const runtime = Runtime.init(allocator);
 
-        const ast = try parser.parse(source);
+        const ast = parser.parse(source);
         const rt = runtime.evaluate(&ast, &env);
 
         const result = switch (rt.type) {
