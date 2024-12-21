@@ -1,0 +1,4 @@
+name: lua
+extensions: [.lua]
+# Defines how languages manages memory, allocations and gc.
+memoryControl: auto
