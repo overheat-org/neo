@@ -1,0 +1,10 @@
+var five = 5
+var two = 2
+
+var fivePlusTwo = five + two
+var fiveMinusTwo = five - two
+var fiveMultTwo = five * two
+
+io.stdout.write(fivePlusTwo)
+io.stdout.write(fiveMinusTwo)
+io.stdout.write(fiveMultTwo)

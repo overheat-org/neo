@@ -1,0 +1,5 @@
+var before = "Hello ";
+var base = "user, ";
+var after = "How it's going?";
+
+io.stdout.write(before + base + after);
