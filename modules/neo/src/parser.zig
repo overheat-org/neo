@@ -236,6 +236,18 @@ fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
     });
 }
 
+fn parse_member_access_expr(self: Self, src: *Reader) Errors!*Node {
+	const left = try parse_expr(self, src);
+	const operator = src.next().tag;
+	const right = try parse_identifier(self, src);
+
+	return Node.new(.MemberAccessExpression, .{
+		.object = left,
+		.property = right,
+		.meta = operator == .Colon
+	});
+}
+
 fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
     const left = try parse_additive_expr(self, src);
     const operator: Token.Tag = if (src.curr()) |c| c.tag else .EOF;
@@ -350,6 +362,14 @@ inline fn parse_number_expr(_: Self, src: *Reader) Errors!*Node {
 
 inline fn parse_identifier(_: Self, src: *Reader) Errors!*Node {
     const _id = src.next();
+	const next_node = src.peek();
+
+	if(next_node and (
+		next_node.?.tag == .Dot or
+		next_node.?.tag == .Colon
+	)) {
+		return parse_member_access_expr(Self, src);
+	}
 
     return Node.new(.{
         .kind = .Identifier,
