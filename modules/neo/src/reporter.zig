@@ -3,7 +3,7 @@ const _token = @import("./token.zig");
 const Span = _token.Span;
 const Allocator = std.mem.Allocator;
 
-const Errors = enum {
+const Error = enum {
     InternalError,
     SyntaxError,
     DivisionByZero,
@@ -16,9 +16,9 @@ const Errors = enum {
 
 var allocator: Allocator = undefined;
 
-const VesperError = @This();
+const NeoError = @This();
 
-err: Errors,
+err: Error,
 span: Span,
 meta: std.StaticStringMap([]const u8),
 
@@ -26,34 +26,35 @@ pub inline fn init(_allocator: Allocator) void {
     allocator = _allocator;
 }
 
-pub fn new(err: Errors, span: Span, meta: anytype) VesperError {
-    const meta_info = @typeInfo(@TypeOf(meta)).Struct;
-    const fields = meta_info.fields;
+pub fn new(err: Error, span: Span, meta: anytype) NeoError {
+    const meta_info = @typeInfo(@TypeOf(meta));
+    const fields = meta_info.@"struct".fields;
 
-    const slice = allocator.alloc([2][]const u8, fields.len) catch unreachable;
+	var slice = std.mem.zeroes([fields.len]struct { []const u8, []const u8 });
+    var i: usize = 0;
 
-    comptime var i = 0;
     inline for (fields) |field| {
-        slice[i] = .{ field.name, @field(meta, field.name) };
+        const value = @field(meta, field.name);
 
+        slice[i] = .{ field.name, value };
         i += 1;
     }
 
     const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
 
-    return VesperError{ .err = err, .span = span, .meta = _meta };
+    return NeoError{ .err = err, .span = span, .meta = _meta };
 }
 
 pub fn throw(e: anytype) noreturn {
-    nosuspend VesperError._throw_(e) catch {};
+    nosuspend NeoError._throw_(e) catch {};
 
     std.process.exit(1);
 }
 
 fn _throw_(err: anytype) !void {
-    const meta = if(@hasField(@TypeOf(err), "meta")) err.meta else .{};
-    
-    const e = if (@TypeOf(err) != VesperError) VesperError.new(err.err, .{ .line = 0, .column = 0 }, meta) else err;
+    const meta = if (@hasField(@TypeOf(err), "meta")) err.meta else .{};
+
+    const e = if (@TypeOf(err) != NeoError) NeoError.new(err.err, .{ .line = 0, .column = 0 }, meta) else err;
 
     const stdout = std.io.getStdOut().writer();
 
@@ -89,6 +90,8 @@ fn _throw_(err: anytype) !void {
             }
         },
         .OutOfMemory => {
+			std.debug.print("\n{any}\n", .{e.meta.get("a").?});
+			
             try stdout.print("Out of Memory", .{});
         },
         .UndefinedVariable => {
