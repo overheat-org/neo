@@ -18,14 +18,17 @@ pub const Node = struct {
     props: ?Properties = null,
     children: []*const Node = &.{},
 
-    pub inline fn new(node: Node) *Node {
-        const current = allocator.create(Node) catch VesperError.throw(.{ .err = .OutOfMemory });
+	pub fn new(comptime kind: Kind, props: Properties[kind]) *Node {
+		const current = allocator.create(Node) catch VesperError.throw(.{ .err = .OutOfMemory });
 
-        current.* = node;
+        current.* = Node{
+			.kind = kind,
+			.props = props
+		};
         node_ptrs_list.append(current) catch VesperError.throw(.{ .err = .OutOfMemory });
 
         return current;
-    }
+	}
 
     pub const Kind = enum {
         Program,
@@ -42,6 +45,7 @@ pub const Node = struct {
         AssignmentExpression,
         ComparationExpression,
         BinaryExpression,
+		MemberAccessExpression,
     };
 
     pub const Properties = union(Kind) {
@@ -59,6 +63,7 @@ pub const Node = struct {
         AssignmentExpression: AssignmentExpression,
         ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
+		MemberAccessExpression: MemberAccessExpression,
     };
 };
 
@@ -115,4 +120,10 @@ pub const AssignmentExpression = struct {
     left: *Node,
     right: *Node,
     operator: TokenTag,
+};
+
+pub const MemberAccessExpression = struct {
+	object: *Node,
+	property: *Node,
+	meta: bool
 };
