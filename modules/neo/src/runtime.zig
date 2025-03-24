@@ -60,8 +60,6 @@ const Self = @This();
 allocator: Allocator,
 
 pub fn init(allocator: Allocator) Self {
-    VesperError.init(allocator);
-
     return Self{
         .allocator = allocator,
     };

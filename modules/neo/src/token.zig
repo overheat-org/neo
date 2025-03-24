@@ -39,6 +39,18 @@ pub const Tag = enum {
     LeftBracket,
     RightBracket,
     EOF,
+
+	pub fn repr(tag: Tag) []const u8 {
+		return switch (tag) {
+			.Asterisk => "*",
+			.Plus => "+",
+			.Minus => "-",
+			.Slash => "/",
+			.Percent => "%",
+			.Dot => ".",
+			else => @panic("This tag haven't a string repr")
+		};
+	}
 };
 
 pub const Value = union(enum) {
