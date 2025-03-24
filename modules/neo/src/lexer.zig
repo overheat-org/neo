@@ -1,7 +1,9 @@
 const std = @import("std");
 const Token = @import("./token.zig");
 const Span = Token.Span;
-const VesperError = @import("./reporter.zig");
+const NeoError = @import("./reporter.zig");
+const utils = @import("./utils.zig");
+const unwrap_error = utils.unwrap_error;
 
 const NULL_CHAR = '\x00';
 const allocator = std.heap.page_allocator;
@@ -64,7 +66,7 @@ const Tokens = struct {
     inline fn save(self: *Tokens, tag: Token.Tag, value: ?Token.Value) void {
         const span = Span{ .line = self.src.line_pos, .column = self.src.column_pos };
 
-        self.value.append(Token{ .tag = tag, .value = value, .span = span }) catch unreachable;
+        unwrap_error(self.value.append(Token{ .tag = tag, .value = value, .span = span }));
     }
 };
 
@@ -235,7 +237,7 @@ fn makeNumber(source: *Reader) Token.Value {
     const slice = source.content[start_offset..end_offset];
 
     const number = std.fmt.parseFloat(f64, slice) 
-        catch VesperError.throw(.{ .err = .TypeMismatch, .meta = .{ .expected = "number", .found = slice } });
+        catch NeoError.throw(.{ .err = .TypeMismatch, .meta = .{ .expected = "number", .found = slice } });
 
     return Token.Value{ .number = number };
 }

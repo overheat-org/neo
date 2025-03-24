@@ -9,10 +9,10 @@ const AssignmentExpression = _ast.AssignmentExpression;
 const BinaryExpression = _ast.BinaryExpression;
 const Ast = @import("./ast.zig");
 const NeoError = @import("./reporter.zig");
+const utils = @import("./utils.zig");
+const unwrap_error = utils.unwrap_error;
 
 const Self = @This();
-
-pub const Errors = std.mem.Allocator.Error || error { _ };
 
 const Reader = struct {
     offset: usize,
@@ -87,12 +87,12 @@ pub fn parse(self: Self, source: []const u8) Node {
     while (src.not_eof()) {
         const stmt = parse_stmt(self, &src);
 
-        program_children.append(stmt) catch |e| NeoError.throw(e);
+        unwrap_error(program_children.append(stmt));
     }
 
     return Node{
         .kind = .Program,
-        .children = program_children.toOwnedSlice() catch |e| NeoError.throw(e),
+        .children = unwrap_error(program_children.toOwnedSlice()),
         .props = null,
     };
 }
@@ -106,7 +106,7 @@ pub fn deinit(self: Self) void {
 }
 
 fn parse_stmt(self: Self, src: *Reader) *Node {
-    return try switch (src.curr().?.tag) {
+    return switch (src.curr().?.tag) {
         .LeftBrace => parse_block(self, src),
         .Var, .Const => parse_var_decl(self, src),
         .If => parse_if_stmt(self, src),
@@ -123,16 +123,14 @@ fn parse_var_decl(self: Self, src: *Reader) *Node {
     const token = src.curr().?;
     _ = src.next();
 
-    return Node.new(.{
-        .kind = .VarDeclaration,
-        .props = .{
-            .VarDeclaration = .{
-                .id = identifierNode,
-                .value = if (token.tag == .Equal) parse_expr(self, src) else Node.new(.{ .kind = .Null }),
-                .constant = is_const,
-            },
+    return Node.new(
+        .VarDeclaration,
+        .{
+			.id = identifierNode,
+			.value = if (token.tag == .Equal) parse_expr(self, src) else Node.new(.Null, .{}),
+			.constant = is_const,
         },
-    });
+    );
 }
 
 fn parse_if_stmt(self: Self, src: *Reader) *Node {
@@ -160,17 +158,17 @@ fn parse_if_stmt(self: Self, src: *Reader) *Node {
         }
     }
 
-    return Node.new(.{
-        .kind = .If,
-        .props = .{
-            .If = .{
-                .expect = expect,
-                .then = then,
-                .children = else_stmt,
-            },
-        },
-        .span = _if.span,
-    });
+    const node = Node.new(
+		.If,
+		.{
+			.expect = expect,
+			.then = then,
+			.children = else_stmt,
+		},
+    );
+	node.span = _if.span;
+
+	return node;
 }
 
 fn parse_expr(self: Self, src: *Reader) *Node {
@@ -185,19 +183,23 @@ fn parse_block(self: Self, src: *Reader) *Node {
     var stmts_list = std.ArrayList(*Node).init(self.allocator);
 
     while (src.curr().?.tag != .RightBrace) {
-        stmts_list.append(parse_stmt(self, src)) catch |e| NeoError.throw(e);
+        unwrap_error(stmts_list.append(parse_stmt(self, src)));
     }
 
     _ = src.next();
 
-    return Node.new(.{ .kind = .Block, .children = stmts_list.toOwnedSlice(), .span = _block.span });
+    const node = Node.new(.Block, .{});
+	node.children = unwrap_error(stmts_list.toOwnedSlice());
+	node.span = _block.span;
+
+	return node;
 }
 
 inline fn parse_string_expr(_: Self, src: *Reader) *Node {
     const curr = src.curr();
     _ = src.next();
 
-    return Node.new(.{ .kind = .String, .props = .{ .String = .{ .value = curr.?.value.?.string } } });
+    return Node.new(.String, .{ .value = curr.?.value.?.string });
 }
 
 fn parse_object_expr(self: Self, src: *Reader) *Node {
@@ -216,16 +218,17 @@ fn parse_object_expr(self: Self, src: *Reader) *Node {
         src.expect(&.{.Equal}, "Missing colon following Identifier in Object Expression");
         const value = parse_expr(self, src);
 
-        try props.put(key, value);
+        unwrap_error(props.put(key, value));
     }
 
-    return Node.new(.{
-        .kind = .ObjectExpression,
-        .props = .{
-            .ObjectExpression = .{ .properties = props },
-        },
-        .span = _object.?.span,
-    });
+    const node = Node.new(
+		.ObjectExpression,
+        .{ .properties = props },
+    );
+
+	node.span = _object.?.span;
+
+	return node;
 }
 
 fn parse_member_access_expr(self: Self, src: *Reader) *Node {
@@ -250,34 +253,34 @@ fn parse_comparation_expr(self: Self, src: *Reader) *Node {
 
             const right = parse_primary_expr(self, src);
 
-            return Node.new(.{
-                .kind = .AssignmentExpression,
-                .props = .{
-                    .AssignmentExpression = .{
-                        .left = left,
-                        .operator = operator,
-                        .right = right,
-                    },
+            const node = Node.new(
+                .AssignmentExpression,
+                .{
+					.left = left,
+					.operator = operator,
+					.right = right,
                 },
-                .span = _eq.span,
-            });
+            );
+			node.span = _eq.span;
+
+			return node;
         },
         .LessEqual, .LessThan, .GreaterThan, .GreaterEqual, .NotEqual, .DoubleEqual => {
             const _comparation = src.next();
 
             const right = parse_primary_expr(self, src);
 
-            return Node.new(.{
-                .kind = .ComparationExpression,
-                .props = .{
-                    .ComparationExpression = .{
-                        .left = left,
-                        .operator = operator,
-                        .right = right,
-                    },
-                },
-                .span = _comparation.span,
-            });
+            const node = Node.new(
+				.ComparationExpression,
+				.{
+					.left = left,
+					.operator = operator,
+					.right = right,
+				},
+            );
+			node.span = _comparation.span;
+
+			return node;
         },
         else => left,
     };
@@ -293,13 +296,15 @@ fn parse_additive_expr(self: Self, src: *Reader) *Node {
 
         const right = parse_multiplicitave_expr(self, src);
 
-        left = Node.new(.{ .kind = .BinaryExpression, .props = .{
-            .BinaryExpression = .{
+        left = Node.new(
+			.BinaryExpression,
+            .{
                 .left = left,
                 .operator = operator,
                 .right = right,
             },
-        }, .span = _expr.span });
+        );
+		left.span = _expr.span;
 
         operator = src.curr().?.tag;
     }
@@ -320,17 +325,15 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) *Node {
 
         const right = parse_primary_expr(self, src);
 
-        left = Node.new(.{
-            .kind = .BinaryExpression,
-            .props = .{
-                .BinaryExpression = .{
-                    .left = left,
-                    .operator = operator,
-                    .right = right,
-                },
-            },
-            .span = _expr.span,
-        });
+        left = Node.new(
+			.BinaryExpression,
+            .{
+				.left = left,
+				.operator = operator,
+				.right = right,
+			}
+		);
+		left.span = _expr.span;
 
         operator = src.curr().?.tag;
     }
@@ -338,40 +341,40 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) *Node {
     return left;
 }
 
-inline fn parse_number_expr(_: Self, src: *Reader) Errors!*Node {
+inline fn parse_number_expr(_: Self, src: *Reader) *Node {
     const _number = src.next();
 
-    return Node.new(.{
-        .kind = .Number,
-        .props = .{
-            .Number = .{
-                .value = src.curr().?.value.?.number,
-            },
+    const node = Node.new(
+        .Number,
+        .{
+			.value = src.curr().?.value.?.number,
         },
-        .span = _number.span,
-    });
+    );
+	node.span = _number.span;
+
+	return node;
 }
 
-inline fn parse_identifier(_: Self, src: *Reader) *Node {
+inline fn parse_identifier(self: Self, src: *Reader) *Node {
     const _id = src.next();
 	const next_node = src.peek();
 
-	if(next_node and (
+	if(next_node != null and (
 		next_node.?.tag == .Dot or
 		next_node.?.tag == .Colon
 	)) {
-		return parse_member_access_expr(Self, src);
+		return parse_member_access_expr(self, src);
 	}
 
-    return Node.new(.{
-        .kind = .Identifier,
-        .props = .{
-            .Identifier = .{
-                .name = src.curr().?.value.?.string,
-            },
+    const node = Node.new(
+		.Identifier,
+        .{
+			.name = src.curr().?.value.?.string,
         },
-        .span = _id.span,
-    });
+    );
+	node.span = _id.span;
+
+	return node;
 }
 
 inline fn parse_paren(self: Self, src: *Reader) *Node {
@@ -395,7 +398,8 @@ fn parse_primary_expr(self: Self, src: *Reader) *Node {
         .LeftParen => parse_paren(self, src),
         else => NeoError.throw(.{
             .err = .SyntaxError,
-            .meta = .{ .character = @tagName(current.tag) }
+            .meta = .{ .character = @tagName(current.tag) },
+			.span = current.span,
         }),
     };
 }
