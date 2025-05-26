@@ -5,7 +5,6 @@ const TokenTag = _token.Tag;
 const Span = _token.Span;
 const NeoError = @import("./reporter.zig");
 const utils = @import("./utils.zig");
-const unwrap_error = utils.unwrap_error;
 const format = utils.format;
 
 const Node = @This();
@@ -27,19 +26,6 @@ pub fn new(comptime kind: Kind, prop: std.meta.TagPayload(Properties, kind)) *No
     };
     // unwrap_error(ptrs_list.append(current));
     return current;
-}
-
-pub fn repr(self: Node) []const u8 {
-    switch (self.kind) {
-        .Identifier => self.props.Identifier.name,
-        .Number => format("{d}", .{self.props.Number.value}),
-        .Boolean => format("{s}", .{if (self.props.Boolean.value == 1) "true" else "false"}),
-        .String => format("\"{s}\"", .{self.props.String.value}),
-        .BinaryExpression => {
-            const props = self.props.BinaryExpression;
-            return format("{s}{s}{s}", .{ props.left.repr(), props.operator.repr(), props.right.repr() });
-        },
-    }
 }
 
 pub fn print(self: Node) void {
@@ -165,4 +151,8 @@ pub const AssignmentExpression = struct {
     operator: TokenTag,
 };
 
-pub const MemberAccessExpression = struct { object: *Node, property: *Node, meta: bool };
+pub const MemberAccessExpression = struct { 
+    object: *Node, 
+    property: *Node, 
+    meta: bool, 
+};

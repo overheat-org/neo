@@ -10,7 +10,8 @@ const BinaryExpression = _ast.BinaryExpression;
 const Ast = @import("./ast.zig");
 const NeoError = @import("./reporter.zig");
 const utils = @import("./utils.zig");
-const unwrap_error = utils.unwrap_error;
+const ArrayListWrapper = utils.ArrayListWrapper;
+const NodeMap = utils.NodeMap;
 
 const Self = @This();
 
@@ -81,18 +82,18 @@ pub fn parse(self: Self, source: []const u8) Node {
 
     var src = Reader.init(&tokens);
 
-    var program_children = std.ArrayList(*Node).init(self.allocator);
+    var program_children = ArrayListWrapper(*Node).init(self.allocator);
     defer program_children.deinit();
 
     while (src.not_eof()) {
         const stmt = parse_stmt(self, &src);
 
-        unwrap_error(program_children.append(stmt));
+        program_children.append(stmt);
     }
 
     return Node{
         .kind = .Program,
-        .children = unwrap_error(program_children.toOwnedSlice()),
+        .children = program_children.toOwnedSlice(),
         .props = null,
     };
 }
@@ -180,16 +181,16 @@ fn parse_expr(self: Self, src: *Reader) *Node {
 
 fn parse_block(self: Self, src: *Reader) *Node {
     const _block = src.next();
-    var stmts_list = std.ArrayList(*Node).init(self.allocator);
+    var stmts_list = ArrayListWrapper(*Node).init(self.allocator);
 
     while (src.curr().?.tag != .RightBrace) {
-        unwrap_error(stmts_list.append(parse_stmt(self, src)));
+        stmts_list.append(parse_stmt(self, src));
     }
 
     _ = src.next();
 
     const node = Node.new(.Block, .{});
-	node.children = unwrap_error(stmts_list.toOwnedSlice());
+	node.children = stmts_list.toOwnedSlice();
 	node.span = _block.span;
 
 	return node;
@@ -209,7 +210,7 @@ fn parse_object_expr(self: Self, src: *Reader) *Node {
 
     _ = src.next();
 
-    var props = std.AutoHashMap(*Node, *Node).init(self.allocator);
+    var props = NodeMap.init(self.allocator);
 
     while (src.not_eof() and src.curr().?.tag != .RightBrace) {
         src.expect(&.{.Identifier}, "Object literal key expected");
@@ -218,7 +219,7 @@ fn parse_object_expr(self: Self, src: *Reader) *Node {
         src.expect(&.{.Equal}, "Missing colon following Identifier in Object Expression");
         const value = parse_expr(self, src);
 
-        unwrap_error(props.put(key, value));
+        props.put(key, value);
     }
 
     const node = Node.new(
