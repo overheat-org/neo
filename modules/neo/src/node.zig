@@ -5,7 +5,6 @@ const TokenTag = _token.Tag;
 const Span = _token.Span;
 const NeoError = @import("./reporter.zig");
 const utils = @import("./utils.zig");
-const unwrap_error = utils.unwrap_error;
 const format = utils.format;
 
 const Node = @This();
@@ -156,4 +155,8 @@ pub const AssignmentExpression = struct {
     operator: TokenTag,
 };
 
-pub const MemberAccessExpression = struct { object: *Node, property: *Node, meta: bool };
+pub const MemberAccessExpression = struct { 
+    object: *Node, 
+    property: *Node, 
+    meta: bool, 
+};
