@@ -25,21 +25,12 @@ pub fn new(comptime kind: Kind, prop: std.meta.TagPayload(Properties, kind)) *No
         .kind = kind,
         .props = @unionInit(Properties, @tagName(kind), prop),
     };
-    // unwrap_error(ptrs_list.append(current));
+
     return current;
 }
 
-pub fn repr(self: Node) []const u8 {
-    switch (self.kind) {
-        .Identifier => self.props.Identifier.name,
-        .Number => format("{d}", .{self.props.Number.value}),
-        .Boolean => format("{s}", .{if (self.props.Boolean.value == 1) "true" else "false"}),
-        .String => format("\"{s}\"", .{self.props.String.value}),
-        .BinaryExpression => {
-            const props = self.props.BinaryExpression;
-            return format("{s}{s}{s}", .{ props.left.repr(), props.operator.repr(), props.right.repr() });
-        },
-    }
+pub fn destroy(self: *Node) void {
+	allocator.destroy(self);
 }
 
 pub fn print(self: Node) void {
