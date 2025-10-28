@@ -3,7 +3,7 @@ const Token = @import("./token.zig");
 const Span = Token.Span;
 const NeoError = @import("./reporter.zig");
 const utils = @import("./utils.zig");
-const ArrayListWrapper = utils.ArrayListWrapper;
+const SafeArrayList = utils.SafeArrayList;
 
 const NULL_CHAR = '\x00';
 const allocator = std.heap.page_allocator;
@@ -53,13 +53,13 @@ const Reader = struct {
 };
 
 const Tokens = struct {
-    value: ArrayListWrapper(Token),
+    value: SafeArrayList(Token),
     src: *Reader,
 
     inline fn init(src: *Reader) Tokens {
         return Tokens{
             .src = src,
-            .value = ArrayListWrapper(Token).init(allocator),
+            .value = SafeArrayList(Token).init(allocator),
         };
     }
 

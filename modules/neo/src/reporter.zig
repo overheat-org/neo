@@ -26,7 +26,7 @@ pub fn new(err: Error, span: ?Span, meta: anytype) NeoError {
     const meta_info = @typeInfo(@TypeOf(meta));
     const fields = meta_info.@"struct".fields;
 
-	var slice = std.mem.zeroes([fields.len]struct { []const u8, []const u8 });
+    var slice = std.mem.zeroes([fields.len]struct { []const u8, []const u8 });
     var i: usize = 0;
 
     inline for (fields) |field| {
@@ -38,11 +38,11 @@ pub fn new(err: Error, span: ?Span, meta: anytype) NeoError {
 
     const _meta = std.StaticStringMap([]const u8).init(slice, allocator) catch unreachable;
 
-	return NeoError{
-		.err = err,
-		.span = span,
-		.meta = _meta,
-	};
+    return NeoError{
+        .err = err,
+        .span = span,
+        .meta = _meta,
+    };
 }
 
 pub fn throw(e: anytype) noreturn {
