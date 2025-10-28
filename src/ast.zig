@@ -18,14 +18,19 @@ pub const Node = struct {
     props: ?Properties = null,
     children: []*const Node = &.{},
 
-    pub inline fn new(node: Node) *Node {
-        const current = allocator.create(Node) catch VesperError.throw(.{ .err = .OutOfMemory });
+	pub fn new(comptime kind: Kind, prop: std.meta.TagPayload(Properties, kind)) *Node {
+		const current = allocator.create(Node) catch NeoError.throw(.{ .err = .OutOfMemory });
+		current.* = Node{
+			.kind = kind,
+			.props = @unionInit(Properties, @tagName(kind), prop),
+		};
 
-        current.* = node;
-        node_ptrs_list.append(current) catch VesperError.throw(.{ .err = .OutOfMemory });
+		return current;
+	}
 
-        return current;
-    }
+	pub fn destroy(self: *Node) void {
+		allocator.destroy(self);
+	}
 
     pub const Kind = enum {
         Program,
@@ -39,6 +44,8 @@ pub const Node = struct {
         ObjectExpression,
         ObjectProperty,
         Null,
+		RefExpression,
+		OwnedExpression,
         AssignmentExpression,
         ComparationExpression,
         BinaryExpression,
@@ -56,6 +63,8 @@ pub const Node = struct {
         ObjectExpression: ObjectExpression,
         ObjectProperty: ObjectProperty,
         Null: void,
+		RefExpression: RefExpression,
+		OwnedExpression: OwnedExpression,
         AssignmentExpression: AssignmentExpression,
         ComparationExpression: ComparationExpression,
         BinaryExpression: BinaryExpression,
@@ -109,6 +118,14 @@ pub const ComparationExpression = struct {
     left: *Node,
     right: *Node,
     operator: TokenTag,
+};
+
+pub const RefExpression = struct {
+	expr: *Node
+};
+
+pub const OwnedExpression = struct {
+	expr: *Node
 };
 
 pub const AssignmentExpression = struct {

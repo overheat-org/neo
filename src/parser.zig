@@ -7,295 +7,234 @@ const _ast = @import("./ast.zig");
 const Node = _ast.Node;
 const AssignmentExpression = _ast.AssignmentExpression;
 const BinaryExpression = _ast.BinaryExpression;
-const Ast = @import("./ast.zig");
 const VesperError = @import("./reporter.zig");
 
 const Self = @This();
 
-pub const Errors = std.mem.Allocator.Error || error { _ };
-
-const Reader = struct {
-    offset: usize,
-    tokens: *std.ArrayList(Token),
-
-    fn init(tokens: *std.ArrayList(Token)) Reader {
-        return Reader{
-            .offset = 0,
-            .tokens = tokens,
-        };
-    }
-
-    inline fn curr(self: *Reader) ?Token {
-        if (self.offset >= self.tokens.items.len) {
-            return null;
-        }
-
-        return self.tokens.items[self.offset];
-    }
-
-    inline fn peek(self: *Reader) ?Token {
-        if (self.offset + 1 >= self.tokens.items.len) {
-            return null;
-        }
-
-        return self.tokens.items[self.offset + 1];
-    }
-
-    inline fn next(self: *Reader) Token {
-        if (self.offset + 1 >= self.tokens.items.len) {
-            return self.tokens.items[self.offset]; // Returing EOF
-        }
-
-        self.offset += 1;
-
-        return self.tokens.items[self.offset];
-    }
-
-    fn expect(self: *Reader, comptime tags: []const Token.Tag, comptime string: []const u8) void {
-        const token = self.curr().?;
-        for (tags) |tag| {
-            if (tag == token.tag) return;
-        }
-
-        @panic(string);
-    }
-
-    inline fn not_eof(self: *Reader) bool {
-        return if (self.curr()) |c| c.tag != TokenTag.EOF else false;
-    }
-};
-
 allocator: Allocator,
 
-pub fn init(allocator: Allocator) Self {
-    Ast.node_ptrs_list = std.ArrayList(*Node).init(allocator);
+inline fn not_eof(self: Self) bool {
+	return self.src.curr().?.tag != .EOF;
+}
 
+pub fn init(allocator: Allocator) Self {
     return Self{
         .allocator = allocator,
     };
 }
 
 pub fn parse(self: Self, source: []const u8) Node {
-    var tokens = Lexer.init(source);
-    defer tokens.deinit();
-
-    var src = Reader.init(&tokens);
+    var lexer = Lexer.init(source);
+    defer lexer.deinit();
 
     var program_children = std.ArrayList(*Node).init(self.allocator);
     defer program_children.deinit();
 
-    while (src.not_eof()) {
-        const stmt = parse_stmt(self, &src) catch |e| switch (e) {
-            Errors.OutOfMemory => VesperError.throw(.{ .err = .OutOfMemory }),
-            else => {
-                const message = std.fmt.allocPrint(std.heap.page_allocator, "Unknown error found: {s}", .{ @errorName(e) })
-                    catch "unknown error found";
+    while (self.not_eof()) {
+       const stmt = parse_stmt(self, &lexer);
 
-                @panic(message);
-            }
-        };
-
-        program_children.append(stmt) catch VesperError.throw(.{ .err = .OutOfMemory });
+        program_children.append(stmt);
     }
 
     return Node{
         .kind = .Program,
-        .children = program_children.toOwnedSlice() catch VesperError.throw(.{ .err = .OutOfMemory }),
+        .children = program_children.toOwnedSlice(),
         .props = null,
     };
 }
 
-pub fn deinit(self: Self) void {
-    for (Ast.node_ptrs_list.items) |item| {
-        self.allocator.destroy(item);
-    }
-
-    Ast.node_ptrs_list.deinit();
-}
-
-fn parse_stmt(self: Self, src: *Reader) Errors!*Node {
-    return try switch (src.curr().?.tag) {
-        .LeftBrace => parse_block(self, src),
-        .Var, .Const => parse_var_decl(self, src),
+fn parse_stmt(self: Self, src: *Lexer) *Node {
+    return switch (src.current.?.tag) {
+		.Con => parse_con_stmt(self, src),
+		.Var => parse_var_stmt(self, src),
         .If => parse_if_stmt(self, src),
+		.Match => parse_match(self, src),
+		.While => parse_while_stmt(self, src),
+		.For => parse_for_stmt(self, src),
+		.Fn => parse_fn_stmt(self, src),
+		.Class => parse_class_stmt(self, src),
         else => parse_expr(self, src),
     };
 }
 
-fn parse_var_decl(self: Self, src: *Reader) Errors!*Node {
-    const keyword = src.next();
-    const is_const = keyword.tag == .Const;
-
-    const identifierNode = try parse_primary_expr(self, src);
-    src.expect(&.{ .Equal, .SemiColon }, "Expecting semi-colon or equal");
-    const token = src.curr().?;
-    _ = src.next();
-
-    return Node.new(.{
-        .kind = .VarDeclaration,
-        .props = .{
-            .VarDeclaration = .{
-                .id = identifierNode,
-                .value = if (token.tag == .Equal) try parse_expr(self, src) else Node.new(.{ .kind = .Null }),
-                .constant = is_const,
-            },
-        },
-    });
+fn parse_con_stmt(self: Self, src: *Lexer) *Node {
+	return self.make_node(
+		.Con, 
+		.{ .expr = parse_assignment_expr(self, src)
+	});
 }
 
-fn parse_if_stmt(self: Self, src: *Reader) Errors!*Node {
-    const _if = src.next();
+fn parse_var_stmt(self: Self, src: *Lexer) *Node {
+	return self.make_node(
+		.Var, 
+		.{ .expr = parse_assignment_expr(self, src)
+	});
+}
 
-    src.expect(&.{.LeftParen}, "Expecting '('");
-    _ = src.next();
+fn parse_if_stmt(self: Self, src: *Lexer) *Node {
+	self.expect(.LeftParen);
+    const expect = self.parse_expr(src);
+	self.expect(.RightParen);
 
-    const expect = try parse_expr(self, src);
-
-    src.expect(&.{.RightParen}, "Expecting ')'");
-    _ = src.next();
-
-    const then = try parse_expr(self, src);
+    const then = self.parse_expr_until_end(src);
 
     var else_stmt: ?*Node = null;
 
-    if (src.curr().?.tag == .Else) {
+    if (src.curr.tag == .Else) {
         _ = src.next();
 
-        if (src.curr().?.tag == .If) {
-            else_stmt = try parse_if_stmt(self, src);
+        if (src.curr.tag == .If) {
+            else_stmt = self.parse_if_stmt(src);
         } else {
-            else_stmt = try parse_expr(self, src);
+			self.expect(.Colon);
+			src.next();
+
+            else_stmt = self.parse_expr(src);
         }
     }
 
-    return Node.new(.{
-        .kind = .If,
-        .props = .{
-            .If = .{
-                .expect = expect,
-                .then = then,
-                .children = else_stmt,
-            },
-        },
-        .span = _if.span,
-    });
+    return self.make_node(
+		.If,
+		.{
+			.expect = expect,
+			.then = then,
+			.children = else_stmt,
+		},
+    );
 }
 
-fn parse_expr(self: Self, src: *Reader) Errors!*Node {
+fn parse_while_stmt(self: Self, src: *Lexer) *Node {
+	const expect = self.parse_expr(src);
+	const body = self.parse_expr(src);
+
+	return self.make_node(
+		.While,
+		.{
+			.expect = expect,
+			.body = body,
+		},
+	);
+}
+
+fn parse_expr(self: Self, src: *Lexer) *Node {
     return switch (src.curr().?.tag) {
-        .LeftBrace => parse_block(self, src),
-        else => try parse_object_expr(self, src),
+        else => parse_object_expr(self, src),
     };
 }
 
-fn parse_block(self: Self, src: *Reader) Errors!*Node {
-    const _block = src.next();
-    var stmts_list = std.ArrayList(*Node).init(self.allocator);
-
-    while (src.curr().?.tag != .RightBrace) {
-        try stmts_list.append(try parse_stmt(self, src));
-    }
-
-    _ = src.next();
-
-    return Node.new(.{ .kind = .Block, .children = try stmts_list.toOwnedSlice(), .span = _block.span });
-}
-
-inline fn parse_string_expr(_: Self, src: *Reader) Errors!*Node {
+inline fn parse_string_expr(_: Self, src: *Lexer) *Node {
     const curr = src.curr();
     _ = src.next();
 
-    return Node.new(.{ .kind = .String, .props = .{ .String = .{ .value = curr.?.value.?.string } } });
+    return Node.new(.String, .{ .value = curr.?.value.?.string });
 }
 
-fn parse_object_expr(self: Self, src: *Reader) Errors!*Node {
+fn parse_object_expr(self: Self, src: *Lexer) *Node {
     const _object = src.curr();
 
     if (_object.?.tag != .LeftBrace) return parse_comparation_expr(self, src);
 
     _ = src.next();
 
-    var props = std.AutoHashMap(*Node, *Node).init(self.allocator);
+    var props = NodeMap.init(self.allocator);
 
     while (src.not_eof() and src.curr().?.tag != .RightBrace) {
         src.expect(&.{.Identifier}, "Object literal key expected");
-        const key = try parse_primary_expr(self, src);
+        const key = parse_primary_expr(self, src);
 
         src.expect(&.{.Equal}, "Missing colon following Identifier in Object Expression");
-        const value = try parse_expr(self, src);
+        const value = parse_expr(self, src);
 
-        try props.put(key, value);
+        props.put(key, value);
     }
 
-    return Node.new(.{
-        .kind = .ObjectExpression,
-        .props = .{
-            .ObjectExpression = .{ .properties = props },
-        },
-        .span = _object.?.span,
-    });
+    const node = Node.new(
+		.ObjectExpression,
+        .{ .properties = props },
+    );
+
+	node.span = _object.?.span;
+
+	return node;
 }
 
-fn parse_comparation_expr(self: Self, src: *Reader) Errors!*Node {
-    const left = try parse_additive_expr(self, src);
+fn parse_member_access_expr(self: Self, src: *Lexer) *Node {
+	const left = self.parse_expr(src);
+	const operator = src.next().tag;
+	const right = self.parse_identifier(src);
+
+	return self.make_node(.MemberAccessExpression, .{
+		.object = left,
+		.property = right,
+		.meta = operator == .Colon
+	});
+}
+
+fn parse_assignment_expr(self: Self, src: *Lexer) *Node {
+	const left = parse_additive_expr(self, src);
+    const operator: Token.Tag = if (src.curr()) |c| c.tag else .EOF;
+
+	return switch (operator) {
+		.Equal => {
+            const right = parse_primary_expr(self, src);
+
+            return self.make_node(
+                .AssignmentExpression,
+                .{
+					.left = left,
+					.operator = operator,
+					.right = right,
+                },
+            );
+        },
+	};
+}
+
+fn parse_comparation_expr(self: Self, src: *Lexer) *Node {
+    const left = parse_additive_expr(self, src);
     const operator: Token.Tag = if (src.curr()) |c| c.tag else .EOF;
 
     return switch (operator) {
-        .Equal => {
-            const _eq = src.next();
-
-            const right = try parse_primary_expr(self, src);
-
-            return Node.new(.{
-                .kind = .AssignmentExpression,
-                .props = .{
-                    .AssignmentExpression = .{
-                        .left = left,
-                        .operator = operator,
-                        .right = right,
-                    },
-                },
-                .span = _eq.span,
-            });
-        },
         .LessEqual, .LessThan, .GreaterThan, .GreaterEqual, .NotEqual, .DoubleEqual => {
             const _comparation = src.next();
 
-            const right = try parse_primary_expr(self, src);
+            const right = parse_primary_expr(self, src);
 
-            return Node.new(.{
-                .kind = .ComparationExpression,
-                .props = .{
-                    .ComparationExpression = .{
-                        .left = left,
-                        .operator = operator,
-                        .right = right,
-                    },
-                },
-                .span = _comparation.span,
-            });
+            const node = Node.new(
+				.ComparationExpression,
+				.{
+					.left = left,
+					.operator = operator,
+					.right = right,
+				},
+            );
+			node.span = _comparation.span;
+
+			return node;
         },
         else => left,
     };
 }
 
-fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
-    var left = try parse_multiplicitave_expr(self, src);
+fn parse_additive_expr(self: Self, src: *Lexer) *Node {
+    var left = parse_multiplicitave_expr(self, src);
 
     var operator = src.curr().?.tag;
 
     while (operator == .Plus or operator == .Minus) {
         const _expr = src.next();
 
-        const right = try parse_multiplicitave_expr(self, src);
+        const right = parse_multiplicitave_expr(self, src);
 
-        left = Node.new(.{ .kind = .BinaryExpression, .props = .{
-            .BinaryExpression = .{
+        left = Node.new(
+			.BinaryExpression,
+            .{
                 .left = left,
                 .operator = operator,
                 .right = right,
             },
-        }, .span = _expr.span });
+        );
+		left.span = _expr.span;
 
         operator = src.curr().?.tag;
     }
@@ -303,30 +242,29 @@ fn parse_additive_expr(self: Self, src: *Reader) Errors!*Node {
     return left;
 }
 
-fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
-    var left = try parse_primary_expr(self, src);
+fn parse_multiplicitave_expr(self: Self, src: *Lexer) *Node {
+    var left = parse_primary_expr(self, src);
 
     var operator = src.curr().?.tag;
 
-    while (operator == .Slash or
+    while (
+		operator == .Slash or
         operator == .Asterisk or
-        operator == .Percent)
-    {
+        operator == .Percent
+	) {
         const _expr = src.next();
 
-        const right = try parse_primary_expr(self, src);
+        const right = parse_primary_expr(self, src);
 
-        left = Node.new(.{
-            .kind = .BinaryExpression,
-            .props = .{
-                .BinaryExpression = .{
-                    .left = left,
-                    .operator = operator,
-                    .right = right,
-                },
-            },
-            .span = _expr.span,
-        });
+        left = Node.new(
+			.BinaryExpression,
+            .{
+				.left = left,
+				.operator = operator,
+				.right = right,
+			}
+		);
+		left.span = _expr.span;
 
         operator = src.curr().?.tag;
     }
@@ -334,56 +272,65 @@ fn parse_multiplicitave_expr(self: Self, src: *Reader) Errors!*Node {
     return left;
 }
 
-inline fn parse_number_expr(_: Self, src: *Reader) Errors!*Node {
+inline fn parse_num_expr(_: Self, src: *Lexer) *Node {
     const _number = src.next();
 
-    return Node.new(.{
-        .kind = .Number,
-        .props = .{
-            .Number = .{
-                .value = src.curr().?.value.?.number,
-            },
+    const node = Node.new(
+        .Number,
+        .{
+			.value = src.curr().?.value.?.number,
         },
-        .span = _number.span,
-    });
+    );
+	node.span = _number.span;
+
+	return node;
 }
 
-inline fn parse_identifier(_: Self, src: *Reader) Errors!*Node {
+inline fn parse_id(self: Self, src: *Lexer) *Node {
     const _id = src.next();
+	const next_node = src.peek();
 
-    return Node.new(.{
-        .kind = .Identifier,
-        .props = .{
-            .Identifier = .{
-                .name = src.curr().?.value.?.string,
-            },
+	if(
+		next_node != null and
+		(
+			next_node.?.tag == .Dot or
+			next_node.?.tag == .Colon
+		)
+	) {
+		return parse_member_access_expr(self, src);
+	}
+
+    return self.make_node(
+		.Identifier,
+        .{
+			.name = src.curr().?.value.?.string,
         },
-        .span = _id.span,
-    });
+    );
 }
 
-inline fn parse_paren(self: Self, src: *Reader) Errors!*Node {
+inline fn parse_paren(self: Self, src: *Lexer) *Node {
     _ = src.next();
 
-    const value = try parse_expr(self, src);
+    const value = self.parse_expr(src);
 
-    _ = src.expect(&.{.RightParen}, "Expecting \")\"");
+    self.expect(.RightParen);
     _ = src.next();
 
     return value;
 }
 
-fn parse_primary_expr(self: Self, src: *Reader) Errors!*Node {
+fn parse_primary_expr(self: Self, src: *Lexer) *Node {
     const current = src.curr().?;
 
     return switch (current.tag) {
-        .Identifier => parse_identifier(self, src),
-        .String => parse_string_expr(self, src),
-        .Number => parse_number_expr(self, src),
+        .Id => parse_identifier(self, src),
+        .Str => parse_string_expr(self, src),
+        .Num => parse_number_expr(self, src),
         .LeftParen => parse_paren(self, src),
-        else => VesperError.throw(.{
+        else => NeoError.throw(.{
             .err = .SyntaxError,
-            .meta = .{ .character = @tagName(current.tag) }
+            .meta = .{ .character = @tagName(current.tag) },
+			.span = current.span,
         }),
     };
 }
