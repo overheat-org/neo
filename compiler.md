@@ -52,7 +52,7 @@ decl con d: arr<num>
 ```
 
 ```
-class Dog
+struct Dog
 	fn()
 
 	end
