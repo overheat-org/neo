@@ -32,7 +32,7 @@ obj:type // Object
 
 ## Iterators
 ```
-for (con a of [])
+for ([]) -> a
 	if(a == 0) skip
 
 	break
